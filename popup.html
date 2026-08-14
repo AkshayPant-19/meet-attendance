@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body { width: 320px; font-family: Roboto, Arial, sans-serif; font-size: 13px; margin: 0; padding: 12px; color: #202124; }
+      h1 { font-size: 15px; margin: 0 0 10px; color: #1a73e8; }
+      label { display: block; margin: 8px 0 4px; font-weight: 500; }
+      textarea { width: 100%; height: 200px; border: 1px solid #dadce0; border-radius: 6px; padding: 6px; font-size: 12px; resize: vertical; box-sizing: border-box; }
+      button { margin-top: 10px; background: #1a73e8; color: #fff; border: none; border-radius: 6px; padding: 8px 12px; cursor: pointer; width: 100%; }
+      button:hover { background: #1765cc; }
+      .note { margin-top: 10px; color: #5f6368; font-size: 12px; }
+      #status { color: #188038; margin-top: 8px; font-size: 12px; min-height: 16px; }
+    </style>
+  </head>
+  <body>
+    <h1>Google Meet Attendance</h1>
+    <label for="students">Student list (one name per line)</label>
+    <textarea id="students" spellcheck="false"></textarea>
+    <button id="save">Save list</button>
+    <div class="note">Open a Google Meet meeting &ndash; a &quot;Meet Attendance&quot; panel will appear to track attendance.</div>
+    <div id="status"></div>
+    <script src="default-students.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

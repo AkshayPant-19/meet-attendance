@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "Google Meet Attendance",
+  "version": "1.0.0",
+  "description": "Runs inside your Google Meet meeting, reads the participant list, and marks attendance against your student list.",
+  "permissions": ["storage"],
+  "host_permissions": ["https://meet.google.com/*"],
+  "content_scripts": [
+    {
+      "matches": ["https://meet.google.com/*"],
+      "js": ["default-students.js", "content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "Meet Attendance",
+    "default_popup": "popup.html"
+  }
+}
