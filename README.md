@@ -10,6 +10,30 @@ A Chrome extension that runs **inside** your Google Meet meeting, reads the live
 
 ---
 
+## Install
+
+[![Install](https://img.shields.io/badge/Install-Download%20all%20files-blue?style=for-the-badge&logo=github)](https://github.com/AkshayPant-19/meet-attendance/archive/refs/heads/main.zip)
+[![PowerShell installer](https://img.shields.io/badge/PowerShell-One%20click%20install-green?style=for-the-badge&logo=powershell)](https://raw.githubusercontent.com/AkshayPant-19/meet-attendance/main/install.ps1)
+
+**Option A — Install button above.** Downloads a ZIP with every file in this repo. Unzip it anywhere, then load it in Chrome (steps below).
+
+**Option B — One-click PowerShell install (Windows).** Downloads the ZIP, extracts a fresh `meet-attendance` folder into your current directory, and tells you where it is. Either:
+
+- Download and run `install.ps1`, **or**
+- Open PowerShell and run:
+
+```powershell
+irm https://raw.githubusercontent.com/AkshayPant-19/meet-attendance/main/install.ps1 | iex
+```
+
+**Then, in Chrome:**
+
+1. Open `chrome://extensions`.
+2. Turn on **Developer mode** (top-right).
+3. Click **Load unpacked** and select the folder containing `manifest.json` (e.g. the `meet-attendance` folder the installer created).
+
+> After editing any file, click the **reload** (curved arrow) button on the extension card, then refresh your Meet tab.
+
 ## Features
 
 - **In-meeting panel** — a floating widget inside the Meet page; hidden until you summon it with **Ctrl+M**.
@@ -21,7 +45,7 @@ A Chrome extension that runs **inside** your Google Meet meeting, reads the live
 
 ## Table of Contents
 
-- [Installation](#installation)
+- [Install](#install)
 - [Usage](#usage)
 - [Customizing the student list](#customizing-the-student-list)
 - [How it works](#how-it-works)
@@ -32,16 +56,7 @@ A Chrome extension that runs **inside** your Google Meet meeting, reads the live
 
 ---
 
-## Installation
-
-1. Open Chrome and go to `chrome://extensions`.
-2. Turn on **Developer mode** (toggle in the top-right corner).
-3. Click **Load unpacked** and select the `meet attendance` folder that contains `manifest.json`.
-4. (Optional) Pin the extension via the puzzle icon so it's easy to find.
-
-> After editing any file, click the **reload** (curved arrow) button on the extension card, then refresh your Meet tab.
-
-### Requirements
+## Requirements
 
 - Google Chrome (or a Chromium-based browser such as Edge or Brave)
 - No other dependencies — the extension is plain JavaScript with zero libraries
@@ -115,6 +130,7 @@ meet attendance/
 ├── content.js             # Injects into meet.google.com — scans participants, shows panel
 ├── popup.html             # Toolbar popup UI
 ├── popup.js               # Popup logic for editing/saving the roster
+├── install.ps1            # One-click Windows installer (downloads all files into a folder)
 └── README.md              # This file
 ```
 
