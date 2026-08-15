@@ -10,6 +10,7 @@
   let monitoring = false;
   let observer = null;
   let scanTimer = null;
+  let ensureTimer = null;
   let lastSeen = [];
   let host = null;
 
@@ -80,32 +81,43 @@
     scrollParticipantsPanel();
   }
 
-  // Progressively scroll Meet's People panel so lazy-rendered/virtualized
-  // participant rows get created step-by-step down the whole list (and thus
-  // counted). Every other scan resets to the top to re-trigger rendering.
+  // Progressively scroll every participant scroll container (the People panel
+  // list in particular, not just grid tiles) so lazy-rendered/virtualized rows
+  // get created step-by-step down the whole list. Every other scroll resets to
+  // the top to re-trigger rendering.
   let scrollTick = 0;
-  function scrollParticipantsPanel() {
-    const row = document.querySelector('[data-participant-id]');
-    if (!row) return;
-    let el = row.parentElement;
-    while (el && el !== document.body) {
-      const st = getComputedStyle(el);
-      if (
-        (st.overflowY === 'auto' || st.overflowY === 'scroll' || st.overflowY === 'overlay') &&
-        el.scrollHeight > el.clientHeight + 5
-      ) {
-        const max = el.scrollHeight - el.clientHeight;
-        scrollTick++;
-        if (scrollTick % 2 === 0) {
-          el.scrollTop = 0;
-        } else {
-          const step = Math.max(150, Math.round(max / 8));
-          el.scrollTop = Math.min(el.scrollTop + step, max);
-        }
-        break;
-      }
-      el = el.parentElement;
+  function scrollOne(el) {
+    const max = el.scrollHeight - el.clientHeight;
+    if (max <= 0) return;
+    scrollTick++;
+    if (scrollTick % 2 === 0) {
+      el.scrollTop = 0;
+    } else {
+      const step = Math.max(150, Math.round(max / 8));
+      el.scrollTop = Math.min(el.scrollTop + step, max);
     }
+  }
+
+  function scrollParticipantsPanel() {
+    const scrollers = [];
+    const addScrollers = (startEl) => {
+      let cur = startEl && startEl.parentElement;
+      while (cur && cur !== document.body) {
+        const st = getComputedStyle(cur);
+        if (
+          (st.overflowY === 'auto' || st.overflowY === 'scroll' || st.overflowY === 'overlay') &&
+          cur.scrollHeight > cur.clientHeight + 5
+        ) {
+          if (scrollers.indexOf(cur) === -1) scrollers.push(cur);
+          break;
+        }
+        cur = cur.parentElement;
+      }
+    };
+    const header = findPanelHeader();
+    if (header) addScrollers(header);
+    document.querySelectorAll('[data-participant-id]').forEach(addScrollers);
+    scrollers.forEach(scrollOne);
   }
 
   function scheduleScan() {
@@ -114,8 +126,9 @@
   }
 
   // ---------- participants panel ----------
-  // Off-grid participants are only rendered once Meet's People panel is
-  // open. Best-effort: open it automatically so everyone can be counted.
+  // Off-grid participants are only rendered once Meet's People panel is open.
+  // Open it automatically (and keep it open) so everyone can be counted, and
+  // fall back to a manual-open tip if the button can't be found.
   const labelMatch = (el, words) => {
     const text =
       ((el.getAttribute('aria-label') || '') + ' ' +
@@ -125,17 +138,58 @@
     return words.some((w) => text.includes(w));
   };
 
-  async function openParticipantsPanel() {
-    const btn = Array.from(document.querySelectorAll('[role="button"], button, [role="tab"]')).find((el) =>
-      labelMatch(el, ['people', 'participants']),
+  function findPeopleButton() {
+    const selectors = [
+      '[aria-label*="people" i]',
+      '[aria-label*="participant" i]',
+      '[data-tooltip*="people" i]',
+      '[data-tooltip*="participant" i]',
+      '[data-side-toolbar*="participant" i]',
+      '[data-side-toolbar*="people" i]',
+    ];
+    const nodes = Array.from(document.querySelectorAll(selectors.join(',')));
+    return (
+      nodes.find(
+        (el) =>
+          el.tagName === 'BUTTON' ||
+          el.getAttribute('role') === 'button' ||
+          el.getAttribute('role') === 'tab',
+      ) || null
     );
+  }
+
+  // The open People panel shows a header like "38 participants" (or "3 people").
+  function findPanelHeader() {
+    const re = /^\d+\s*(participants?|people)$/i;
+    const nodes = Array.from(document.querySelectorAll('[aria-label], div, span'));
+    return (
+      nodes.find((el) => {
+        const a = (el.getAttribute && el.getAttribute('aria-label')) || '';
+        if (re.test(a.trim())) return true;
+        if (el.children.length === 0 && re.test((el.textContent || '').trim())) return true;
+        return false;
+      }) || null
+    );
+  }
+
+  function isPeoplePanelOpen() {
+    return !!findPanelHeader();
+  }
+
+  async function ensurePeoplePanel() {
+    if (isPeoplePanelOpen()) return 'open';
+    const btn = findPeopleButton();
     if (btn) {
-      btn.click();
-      return true;
+      const pressed = (btn.getAttribute('aria-pressed') || '').toLowerCase();
+      if (pressed !== 'true') {
+        btn.click();
+        return 'clicked';
+      }
+      return 'open';
     }
     // Toolbar may be collapsed — open the overflow menu and pick People there.
     const more = Array.from(document.querySelectorAll('[role="button"], button')).find((el) =>
-      labelMatch(el, ['more options']),
+      labelMatch(el, ['more options', 'more actions']),
     );
     if (more) {
       more.click();
@@ -145,23 +199,25 @@
       );
       if (item) {
         item.click();
-        return true;
+        return 'clicked';
       }
     }
-    return false;
+    return 'failed';
   }
 
   function start() {
     monitoring = true;
     observer = new MutationObserver(scheduleScan);
     observer.observe(document.body, { childList: true, subtree: true });
+    ensureTimer = setInterval(ensurePeoplePanel, 5000);
     els.startBtn.disabled = true;
     els.stopBtn.disabled = false;
-    els.status.textContent = 'Monitoring...';
+    els.status.textContent = 'Opening People panel...';
     scan();
     scheduleScan();
-    openParticipantsPanel().then((opened) => {
-      if (opened) els.status.textContent = 'Monitoring... People panel opened.';
+    ensurePeoplePanel().then((r) => {
+      if (r === 'failed') els.status.textContent = 'Monitoring... Tip: open the People panel manually.';
+      else els.status.textContent = 'Monitoring... People panel open.';
     });
   }
 
@@ -174,6 +230,10 @@
     if (scanTimer) {
       clearTimeout(scanTimer);
       scanTimer = null;
+    }
+    if (ensureTimer) {
+      clearInterval(ensureTimer);
+      ensureTimer = null;
     }
     els.startBtn.disabled = false;
     els.stopBtn.disabled = true;
