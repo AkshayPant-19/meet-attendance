@@ -364,7 +364,7 @@
     observer.observe(document.body, { childList: true, subtree: true });
     ensureTimer = setInterval(ensurePeoplePanel, 5000);
     scrollTimer = setInterval(scrollAndRecord, 650);
-    logTimer = setInterval(snapshotMinute, 60000);
+    logTimer = setInterval(snapshotMinute, 300000);
     snapshotMinute();
     els.startBtn.disabled = true;
     els.stopBtn.disabled = false;
@@ -568,7 +568,7 @@
     });
     const rosterCsv = [header, ...rows].map((r) => r.map(csvCell).join(',')).join('\r\n');
 
-    const logHeader = ['Minute', 'Present Count', 'Consistent', 'Left', 'Joined', 'Present Students'];
+    const logHeader = ['Time', 'Present Count', 'Consistent', 'Left', 'Joined', 'Present Students'];
     const logRows = minuteLog.map((e) => [
       fmtHM(e.t),
       e.names.length,
@@ -721,7 +721,7 @@
           <div class="ma-list" id="ma-unknown-list"></div>
         </div>
         <div class="ma-section">
-          <div class="ma-label">Session log (per minute)</div>
+          <div class="ma-label">Session log (every 5 min)</div>
           <div class="ma-list" id="ma-log-list"></div>
         </div>
         <div class="ma-row">
