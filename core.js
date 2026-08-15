@@ -66,19 +66,42 @@
 
   /**
    * Return the best student match for a participant name, or null.
-   * Conservative by design: only exact matches (after pronoun-stripping and
-   * de-spacing) are accepted. Partial/first-name matches are rejected so
-   * two students with the same first name can never be falsely marked.
+   * Matching tiers:
+   *   1. Full-name exact match (case/space/pronoun-insensitive).
+   *   2. First-name match — the surname is NOT required, so long as the first
+   *      name is unique on the roster. Ambiguous first names (e.g. two
+   *      Shauryas) never match on first name alone, preventing false marks.
    * Pass a precomputed index (from createIndex) for performance.
    */
   function matchStudent(participantName, students, index) {
-    var pc = compactKey(participantName);
-    if (!pc) return null;
-    if (index) return index.get(pc) || null;
-    for (var i = 0; i < students.length; i++) {
-      if (compactKey(students[i]) === pc) return students[i];
+    var tokens = cleanTokens(participantName);
+    if (!tokens.length) return null;
+    var pc = tokens.join('');
+
+    if (index) {
+      if (index.has(pc)) return index.get(pc);
+    } else {
+      for (var i0 = 0; i0 < students.length; i0++) {
+        if (compactKey(students[i0]) === pc) return students[i0];
+      }
     }
-    return null;
+
+    // First-name tier (surname not required).
+    var first = tokens[0];
+    var match = null;
+    var ambiguous = false;
+    for (var i = 0; i < students.length; i++) {
+      var sTokens = cleanTokens(students[i]);
+      if (!sTokens.length) continue;
+      if (sTokens[0] === first) {
+        if (match) {
+          ambiguous = true;
+          break;
+        }
+        match = students[i];
+      }
+    }
+    return ambiguous ? null : match;
   }
 
   /**

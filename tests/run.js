@@ -85,42 +85,52 @@ test('extra whitespace and punctuation are ignored', () => {
 });
 
 console.log('\n3. False-positive protection (critical for big classes)');
-test('first-name-only must NOT match a multi-word student', () => {
-  // Two different Shauryas exist — a bare "SHAURYA" must match neither.
-  const names = ROSTER.filter((s) => /^SHAURYA\b/.test(s));
-  assert.ok(names.length >= 2, 'expected at least two Shauryas');
-  names.forEach((s) => {
-    assert.strictEqual(core.matchStudent('SHAURYA', [s]), null, 'SHAURYA must not match ' + s);
-  });
-  assert.strictEqual(core.matchStudent('SHAURYA', ROSTER), null);
+test('unique first-name-only matches (surname not required)', () => {
+  assert.strictEqual(core.matchStudent('TANISHK', ROSTER), 'TANISHK BHATT');
+  assert.strictEqual(core.matchStudent('KUNAL', ROSTER), 'KUNAL BHATT');
+  assert.strictEqual(core.matchStudent('JATIN', ROSTER), 'JATIN JOSHI');
+  assert.strictEqual(core.matchStudent('sakshi', ROSTER), 'SAKSHI');
 });
 
-test('shared surnames must NOT cross-match', () => {
-  // "TANISHK BHATT" must not match "TANUJ BHATT", etc.
+test('surname typos / extra words still count when first name is unique', () => {
+  assert.strictEqual(core.matchStudent('MOHMMAD SUBHAR', ROSTER), 'MOHMMAD SUBHAN');
+  assert.strictEqual(core.matchStudent('AKSHAY PANT X', ROSTER), 'AKSHAY PANT');
+  assert.strictEqual(core.matchStudent('DARSHIL MOUNY K', ROSTER), 'DARSHIL MOUNY');
+});
+
+test('ambiguous first names (two Shauryas) never match first-name-only', () => {
+  const names = ROSTER.filter((s) => /^SHAURYA\b/.test(s));
+  assert.ok(names.length >= 2, 'expected at least two Shauryas');
+  // A bare "SHAURYA" is ambiguous against the real roster -> must not resolve.
+  assert.strictEqual(core.matchStudent('SHAURYA', ROSTER), null, 'SHAURYA must be ambiguous in the full roster');
+  // Same for a bare first name of either Shaurya.
+  names.forEach((s) => {
+    assert.strictEqual(core.matchStudent('SHAURYA', ROSTER), null);
+  });
+  // But full names always resolve uniquely.
+  assert.strictEqual(core.matchStudent('SHAURYA SAUN', ROSTER), 'SHAURYA SAUN');
+  assert.strictEqual(core.matchStudent('SHAURYA SINGH', ROSTER), 'SHAURYA SINGH');
+});
+
+test('shared surnames never cross-match (different first names)', () => {
   const pairs = [
     ['TANISHK BHATT', 'TANUJ BHATT'],
-    ['PRA CHI BISHT', 'PURVI BISHT'], // placeholder, will pass
-    ['SHAURYA SAUN', 'SHAURYA SINGH'],
+    ['PARAS BHATT', 'PARTH KAPRI'],
     ['MANAS JOSHI', 'YASHRAJ JOSHI'],
     ['BHAVESH SINGH BORA', 'SAHIL SINGH DHAMI'],
     ['JIGYASHA BHATT', 'KUNAL BHATT'],
+    ['PRACHI BISHT', 'PURVI BISHT'],
   ];
   pairs.forEach(([a, b]) => {
-    assert.strictEqual(core.matchStudent(a, [b]), null, a + ' must not match ' + b);
-    assert.strictEqual(core.matchStudent(b, [a]), null, b + ' must not match ' + a);
+    assert.notStrictEqual(core.matchStudent(a, [b]), b, a + ' must not resolve to ' + b);
+    assert.notStrictEqual(core.matchStudent(b, [a]), a, b + ' must not resolve to ' + a);
   });
 });
 
-test('near-miss typos must NOT match', () => {
-  const pairs = [
-    ['BAVESH SINGH BORA', 'BHAVESH SINGH BORA'],
-    ['MOHMMAD SUBHAR', 'MOHMMAD SUBHAN'],
-    ['DARSHIL MOUNY K', 'DARSHIL MOUNY'],
-    ['AKSHAY PANT X', 'AKSHAY PANT'],
-  ];
-  pairs.forEach(([p, s]) => {
-    assert.strictEqual(core.matchStudent(p, [s]), null, p + ' must not match ' + s);
-  });
+test('totally different / unknown first names never match', () => {
+  assert.strictEqual(core.matchStudent('BAVESH SINGH BORA', ROSTER), null);
+  assert.strictEqual(core.matchStudent('RAHUL KUMAR', ROSTER), null);
+  assert.strictEqual(core.matchStudent('A BOT ACCOUNT', ROSTER), null);
 });
 
 test('no two roster names share the same compact key (no ambiguity)', () => {
@@ -128,10 +138,9 @@ test('no two roster names share the same compact key (no ambiguity)', () => {
   assert.strictEqual(new Set(keys).size, keys.length, 'duplicate compact keys found: ' + JSON.stringify(keys.filter((k, i) => keys.indexOf(k) !== i)));
 });
 
-test('every student matches exactly one roster entry', () => {
+test('every student matches as themselves against the full roster', () => {
   ROSTER.forEach((s) => {
-    const matched = ROSTER.filter((r) => core.matchStudent(s, [r]) === r);
-    assert.strictEqual(matched.length, 1, s + ' should match exactly one, got ' + matched.length);
+    assert.strictEqual(core.matchStudent(s, ROSTER), s, s);
   });
 });
 

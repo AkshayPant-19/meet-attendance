@@ -104,9 +104,12 @@ Or edit it at runtime from the extension popup (toolbar icon) or the in-meeting 
 - Names are compared **case-insensitively** and punctuation is ignored.
 - Spaces are ignored too (so `Sh Aurya Singh` matches `SHAURYA SINGH`).
 - Pronouns/status words are stripped (`(You)`, `(He/Him)`, `presenting`).
-- Matching is **conservative**: only exact name matches count. First-name-only
-  or partial matches are rejected, so two students with the same first name
-  (e.g. two Shauryas) can never be falsely marked present.
+- **The surname is not required.** A student counts if their unique **first
+  name** is detected — so `Tanishk`, `Tanishk B.` or `Tanishk Bhattcharya`
+  all match `TANISHK BHATT`.
+- **Ambiguity guard:** if a first name appears on the roster more than once
+  (e.g. two Shauryas), first-name-only matching is refused and a full-name
+  match is required — so a bare `SHAURYA` never falsely marks either.
 - When a tile's text contains a multi-word student name intact, that student
   is recorded (handles `PARAS BHATT muted`-style tiles).
 
