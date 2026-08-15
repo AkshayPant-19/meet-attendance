@@ -591,20 +591,28 @@
   }
 
   // ---------- UI ----------
-  function setChips(container, items, kind) {
+  function setList(container, items, kind) {
     container.textContent = '';
     if (!items || !items.length) {
       container.textContent = '—';
       return;
     }
     items.forEach((name) => {
-      const c = document.createElement('span');
-      c.className = 'ma-chip ma-chip-' + kind;
+      const row = document.createElement('div');
+      row.className = 'ma-item ma-item-' + kind;
+      const dot = document.createElement('span');
+      dot.className = 'ma-item-dot';
+      row.appendChild(dot);
+      const label = document.createElement('span');
+      label.textContent = name;
+      row.appendChild(label);
       if (kind === 'present' && records[name] && records[name].join) {
-        c.title = 'Joined ' + fmtTime(records[name].join);
+        const t = document.createElement('span');
+        t.className = 'ma-item-time';
+        t.textContent = fmtTime(records[name].join);
+        row.appendChild(t);
       }
-      c.textContent = name;
-      container.appendChild(c);
+      container.appendChild(row);
     });
   }
 
@@ -618,9 +626,9 @@
     els.unknownCount.textContent = unknown.length;
     els.detectedCount.textContent = lastSeen.length;
 
-    setChips(els.presentList, presentList, 'present');
-    setChips(els.absentList, absentList, 'absent');
-    setChips(els.unknownList, unknown, 'unknown');
+    setList(els.presentList, presentList, 'present');
+    setList(els.absentList, absentList, 'absent');
+    setList(els.unknownList, unknown, 'unknown');
 
     const recent = minuteLog.slice(-5);
     els.logList.textContent = recent.length
@@ -735,22 +743,34 @@
           padding-top: 2px;
           margin-top: 10px;
         }
-        #meet-attendance-widget .ma-list { display: flex; flex-wrap: wrap; gap: 6px; }
-        #meet-attendance-widget .ma-chip {
-          display: inline-flex;
-          align-items: center;
-          max-width: 100%;
-          padding: 4px 10px;
-          border-radius: 999px;
-          font-size: 12px;
-          font-weight: 500;
-          border: 1px solid transparent;
-          cursor: default;
+        #meet-attendance-widget .ma-list {
+          display: flex;
+          flex-direction: column;
+          gap: 3px;
         }
-        #meet-attendance-widget .ma-chip.ma-chip-present { background: #dcfce7; color: #166534; border-color: #bbf7d0; }
-        #meet-attendance-widget .ma-chip.ma-chip-absent { background: #fee2e2; color: #991b1b; border-color: #fecaca; }
-        #meet-attendance-widget .ma-chip.ma-chip-unknown { background: #f1f5f9; color: #475569; border-color: #e2e8f0; }
-        #meet-attendance-widget .ma-chip.ma-chip-detected { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+        #meet-attendance-widget .ma-item {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 5px 9px;
+          border-radius: 8px;
+          font-size: 12.5px;
+          color: #1e293b;
+          transition: background .12s ease;
+        }
+        #meet-attendance-widget .ma-item:hover { background: #f1f5f9; }
+        #meet-attendance-widget .ma-item-dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          flex: none;
+        }
+        #meet-attendance-widget .ma-item-present .ma-item-dot { background: #16a34a; }
+        #meet-attendance-widget .ma-item-absent .ma-item-dot { background: #dc2626; }
+        #meet-attendance-widget .ma-item-unknown .ma-item-dot { background: #94a3b8; }
+        #meet-attendance-widget .ma-item-detected .ma-item-dot { background: #2563eb; }
+        #meet-attendance-widget .ma-item-present .ma-item-time { color: #16a34a; font-weight: 600; margin-left: auto; }
+        #meet-attendance-widget .ma-item-time { font-size: 11px; color: #64748b; margin-left: auto; flex: none; }
         #meet-attendance-widget .ma-log {
           background: #f8fafc;
           border: 1px solid #eef2f6;
@@ -912,7 +932,7 @@
   (function patchRenderDetected() {
     const origRender = render;
     render = function () {
-      setChips(els.detectedList, lastSeen, 'detected');
+      setList(els.detectedList, lastSeen, 'detected');
       els.detectedCount.textContent = lastSeen.length;
       origRender();
     };
