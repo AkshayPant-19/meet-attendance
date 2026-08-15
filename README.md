@@ -43,6 +43,7 @@ irm https://raw.githubusercontent.com/AkshayPant-19/meet-attendance/main/install
 - **Fuzzy matching** — case- and punctuation-insensitive, so `SHAURYA SINGH` matches Meet's `Sh Aurya Singh`.
 - **Draggable panel** — pinned to the bottom-left by default, drag it anywhere so it never covers Meet's toolbar.
 - **Built-in debug report** — a one-click report that shows exactly what the scanner sees when something isn't detected.
+- **Timestamps** — records each student's **join** and **leave** time, plus a **per-minute attendance log**, shown in the panel and included in the CSV export.
 - **CSV export** — download `meeting_attendance.csv` at the end of class.
 - **Session reset** — start a clean attendance record for the next meeting.
 
@@ -72,8 +73,9 @@ irm https://raw.githubusercontent.com/AkshayPant-19/meet-attendance/main/install
 2. Open a Google Meet meeting — via a link, the calendar, or a fresh tab.
 3. Press **Ctrl+M** to open the **Meet Attendance** panel (bottom-left by default). Press **Ctrl+M** again to hide it. Drag it by its title bar if you need it elsewhere.
 4. Check the student list is filled in (it is pre-filled from `default-students.js`). Edit if needed and click **Save list**.
-5. Click **Start monitoring**. The extension automatically opens Meet's **People panel** and keeps it open (it re-checks every 5s): it uses the toolbar People button, or the **More options → People** menu if the toolbar is collapsed, and can expand the **"+N" chip** as a fallback. It then **scrolls the panel step-by-step**, scanning right after every step, so the entire roster (including people beyond the video grid) is read and marked. Present / Absent / Not-in-list counts update live.
-6. At the end of the meeting click **Export CSV** to download the attendance file.
+5. Click **Start monitoring**. The extension automatically opens Meet's **People panel** and keeps it open (it re-checks every 5s): it uses the toolbar People button, or the **More options → People** menu if the toolbar is collapsed, and can expand the **"+N" chip** as a fallback. It then **scrolls the panel step-by-step**, scanning right after every step, so the entire roster (including people beyond the video grid) is read and marked. Present / Absent / Not-in-list counts update live, and each student's **join time** is recorded on first detection.
+6. Monitoring also takes a **per-minute snapshot** of who is present (visible in the panel's *Session log*). Press **Stop** to finalize each student's **leave time**.
+7. At the end of the meeting click **Export CSV** — it downloads the roster with **Join / Leave / Duration** columns, followed by the per-minute log.
 
 ### Controls
 
@@ -84,7 +86,7 @@ irm https://raw.githubusercontent.com/AkshayPant-19/meet-attendance/main/install
 | Start monitoring | Open the People panel and begin scanning participants continuously |
 | Stop | Pause scanning |
 | Export CSV | Download `meeting_attendance.csv` |
-| Reset session | Clear attendance records for a new meeting |
+| Reset session | Clear attendance + timestamps for a new meeting |
 | Debug | Copy a diagnostic report to the clipboard / console |
 
 ---
@@ -198,8 +200,11 @@ meet attendance/
 **`Extension context invalidated` in the console**
 This appears in a Meet tab that was open while the extension was reloaded. Refresh the Meet tab.
 
+**The times in the CSV look wrong**
+Join/leave times are only as accurate as detection: someone who joins late or appears off-grid is timed from when they were first actually read. If you forgot to press **Stop**, everyone who was present when the tab closed keeps their last-seen time as "Leave". Timestamps are also reset automatically when you **Start monitoring** in a *different* meeting.
+
 **Attendance list looks wrong for a new meeting**
-Click **Reset session** before the next meeting to clear the previous record.
+Click **Reset session** before the next meeting to clear the previous record (timestamps and log included).
 
 ---
 
