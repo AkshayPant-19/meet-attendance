@@ -38,12 +38,12 @@ irm https://raw.githubusercontent.com/AkshayPant-19/meet-attendance/main/install
 
 - **In-meeting panel** — a floating widget inside the Meet page; hidden until you summon it with **Ctrl+M**.
 - **Live attendance** — present/absent counts update automatically while people join and leave.
-- **Reads the whole People panel** — participants beyond the on-screen grid are counted too; the extension opens the panel automatically, keeps it open, and scrolls it so the full list renders.
+- **Reads the whole People panel** — participants beyond the on-screen grid are counted too. Open Meet's **People panel** yourself (see [Usage](#usage)); the extension reads from it and scrolls it so the full list renders.
 - **Custom roster** — paste your own student list, or edit the bundled default list.
 - **Fuzzy matching** — case- and punctuation-insensitive, so `SHAURYA SINGH` matches Meet's `Sh Aurya Singh`.
 - **Draggable panel** — pinned to the bottom-left by default, drag it anywhere so it never covers Meet's toolbar.
 - **Built-in debug report** — a one-click report that shows exactly what the scanner sees when something isn't detected.
-- **Timestamps** — records each student's **join** and **leave** time, plus a **per-minute attendance log**, shown in the panel and included in the CSV export.
+- **Timestamps** — records each student's **join** and **leave** time, plus an attendance log every **5 minutes** (with who left/joined and whether attendance stayed consistent), shown in the panel and included in the CSV export.
 - **CSV export** — download `meeting_attendance.csv` at the end of class.
 - **Session reset** — start a clean attendance record for the next meeting.
 
@@ -73,9 +73,11 @@ irm https://raw.githubusercontent.com/AkshayPant-19/meet-attendance/main/install
 2. Open a Google Meet meeting — via a link, the calendar, or a fresh tab.
 3. Press **Ctrl+M** to open the **Meet Attendance** panel (bottom-left by default). Press **Ctrl+M** again to hide it. Drag it by its title bar if you need it elsewhere.
 4. Check the student list is filled in (it is pre-filled from `default-students.js`). Edit if needed and click **Save list**.
-5. Click **Start monitoring**. The extension automatically opens Meet's **People panel** and keeps it open (it re-checks every 5s): it uses the toolbar People button, or the **More options → People** menu if the toolbar is collapsed, and can expand the **"+N" chip** as a fallback. It then **scrolls the panel step-by-step**, scanning right after every step, so the entire roster (including people beyond the video grid) is read and marked. Present / Absent / Not-in-list counts update live, and each student's **join time** is recorded on first detection.
-6. Monitoring also takes a **per-minute snapshot** of who is present (visible in the panel's *Session log*). Press **Stop** to finalize each student's **leave time**.
-7. At the end of the meeting click **Export CSV** — it downloads the roster with **Join / Leave / Duration** columns, followed by the per-minute log.
+> **Important:** open Meet's **People panel** yourself before/during monitoring (click the **People** icon, or **More options → People** if the toolbar is collapsed) and keep it open. The scanner reads participant names from that panel — off-grid students are only listed there. The extension will try to re-open it if it gets closed, but for reliable attendance open it manually.
+
+5. Click **Start monitoring**. The extension verifies the **People panel** is open every 5s (via the toolbar button, the **More options → People** menu, or the **"+N" chip**), then **scrolls the panel step-by-step**, scanning right after every step, so the entire roster (including people beyond the video grid) is read and marked. Present / Absent / Not-in-list counts update live, and each student's **join time** is recorded on first detection.
+6. Monitoring takes an attendance **snapshot every 5 minutes**, noting who joined, who left, and whether the present list was **consistent** with the previous snapshot (visible in the panel's *Session log*). Press **Stop** to finalize each student's **leave time**.
+7. At the end of the meeting click **Export CSV** — it downloads the roster with **Join / Leave / Duration** columns, followed by the 5-minute log.
 
 ### Controls
 
@@ -145,10 +147,7 @@ Run it after any change to `core.js`. Current: 27 checks / 0 failures.
 
 `content.js` injects a hidden panel into the Meet page. While monitoring:
 
-1. The extension opens  Meet's **People panel** (toolbar button, or
-   **More options → People** when the toolbar is collapsed; "+N" chip as a last
-   resort) and re-verifies it every 5s — an 8s cooldown stops a detection miss
-   from toggling the panel closed.
+1. The extension verifies Meet's **People panel** is open (toolbar button, **More options → People** when the toolbar is collapsed, or the **"+N" chip** as a last resort) and re-checks every 5s — an 8s cooldown stops a detection miss from toggling the panel closed. **You should open the panel yourself first**; it's the most reliable way to guarantee off-grid participants are listed.
 2. A paced **scroll + record loop** runs every 650ms: it scrolls the drawer one
    step down (only when the panel is actually open — it never scrolls the video
    grid), then scans, so row rendering and detection stay in sync. Reaching the
@@ -193,7 +192,8 @@ meet attendance/
 3. Press F12 → Console and confirm you see `[Meet Attendance] content script loaded on ...`. If you don't, the extension isn't injected.
 
 **Some participants aren't detected**
-- One of the biggest offenders: **off-layout participants**. When a meeting has more people than fit on the video grid, Meet only keeps everyone's names in the page while the **People panel is open**. The extension opens it automatically when you click **Start monitoring** (via the toolbar button or the **More options → People** menu) and keeps it open. If names are still missing, click **Debug** in the panel and paste the report — it shows whether the panel was found/open, how many tiles exist, and exactly what was detected.
+- One of the biggest offenders: **off-layout participants**. When a meeting has more people than fit on the video grid, Meet only keeps everyone's names in the page while the **People panel is open** — so **open the People panel yourself** (People icon, or **More options → People**) and keep it open. The extension tries to re-open it if it closes, but manual is most reliable.
+- If names are still missing, click **Debug** in the panel and paste the report — it shows whether the panel was found/open, how many tiles exist, and exactly what was detected.
 - Google Meet frequently changes its internal DOM. If known participants go missing anyway, update the `NAME_SELECTORS` array at the top of `core.js`.
 - Participants who joined late only appear once their row renders — the scanner keeps scrolling the panel, so give it a few seconds.
 
