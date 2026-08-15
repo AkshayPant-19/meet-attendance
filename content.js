@@ -173,15 +173,18 @@
     return prefer || candidates[0] || null;
   }
 
-  // The open People panel shows a header like "38 participants" (or "3 people").
+  // The open People panel shows a header like "38 participants" / "What's new:
+  // 3 people". Meet splits text across child spans, so compare with spaces
+  // removed ("38participants").
   function findPanelHeader() {
-    const re = /^\d+\s*(participants?|people)$/i;
+    const re = /^\d+(participants?|people|attendees?)/i;
+    const compact = (s) => String(s).replace(/[^0-9a-z]/gi, '').toLowerCase();
     const nodes = Array.from(document.querySelectorAll('[aria-label], div, span'));
     return (
       nodes.find((el) => {
         const a = (el.getAttribute && el.getAttribute('aria-label')) || '';
-        if (re.test(a.trim())) return true;
-        if (el.children.length === 0 && re.test((el.textContent || '').trim())) return true;
+        if (re.test(compact(a))) return true;
+        if (el.children.length === 0 && re.test(compact(el.textContent || ''))) return true;
         return false;
       }) || null
     );
@@ -189,6 +192,9 @@
 
   function isPeoplePanelOpen() {
     if (document.querySelector('[data-side-toolbar*="participant" i], [data-side-toolbar="people"]')) return true;
+    // The participant list renders rows as role="listitem" with a participant
+    // id; grid tiles never do, so this reliably means the drawer is open.
+    if (document.querySelector('[role="listitem"][data-participant-id], [role="list"] [data-participant-id]')) return true;
     return !!findPanelHeader();
   }
 
@@ -227,36 +233,47 @@
     const now = Date.now();
     if (now - lastPanelButtonClick < 8000) return 'cooldown';
 
+    // 1) The toolbar People button, if present.
+    let clicked = 0;
     const btn = findPeopleButton();
     if (btn) {
       const pressed = (btn.getAttribute('aria-pressed') || '').toLowerCase();
-      if (pressed === 'true') return 'open';
-      btn.click();
-      lastPanelButtonClick = now;
-      await new Promise((r) => setTimeout(r, 600));
-      return isPeoplePanelOpen() ? 'open' : 'unsure';
+      if (pressed !== 'true') {
+        btn.click();
+        lastPanelButtonClick = Date.now();
+        clicked++;
+        await new Promise((r) => setTimeout(r, 700));
+        if (isPeoplePanelOpen()) return 'open';
+      } else {
+        return 'open';
+      }
     }
 
-    // Toolbar may be collapsed — open the overflow menu and pick People there.
+    // 2) Toolbar often is collapsed now — open the More options menu and pick
+    //    People there. Do this even if step 1 looked right but didn't open it.
     const more = Array.from(document.querySelectorAll('[role="button"], button')).find((el) =>
       labelMatch(el, ['more options', 'more actions']),
     );
     if (more) {
       more.click();
-      await new Promise((r) => setTimeout(r, 300));
-      const item = Array.from(document.querySelectorAll('[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]')).find((el) =>
-        labelMatch(el, ['people', 'participants']),
-      );
+      lastPanelButtonClick = Date.now();
+      clicked++;
+      await new Promise((r) => setTimeout(r, 400));
+      const item = Array.from(
+        document.querySelectorAll('[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]'),
+      ).find((el) => labelMatch(el, ['people', 'participants']));
       if (item) {
         item.click();
-        lastPanelButtonClick = now;
-        return 'open';
+        lastPanelButtonClick = Date.now();
+        await new Promise((r) => setTimeout(r, 700));
+        if (isPeoplePanelOpen()) return 'open';
       }
     }
-    // Last resort that doesn't need the button at all: expand the "+N" chip so
-    // hidden participants become readable tiles.
+
+    // 3) Last resort that needs no button at all: expand the "+N" chip so
+    //    hidden participants become readable tiles.
     if (tryExpandOverflow()) return 'expanded';
-    return 'failed';
+    return clicked ? 'unsure' : 'failed';
   }
 
   function start() {
