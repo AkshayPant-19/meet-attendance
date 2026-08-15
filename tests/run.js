@@ -283,6 +283,38 @@ test('names wrapped in non-leaf elements (with icon children) are found', () => 
   assert.ok(found.has('NIMISHA MEENA'));
 });
 
+test('tooltip garbage is filtered out and roster names inside it are found (real Meet case)', () => {
+  const tileWithTooltips = (id, tooltipWords) => {
+    const kids = tooltipWords.map((w, idx) => el('span', w, { 'aria-label': w }));
+    return el('tile', null, { 'data-participant-id': id }, kids);
+  };
+  const tiles = [
+    tileWithTooltips('p1', [
+      'Pin Akshay Pant to your main screen',
+      'Reframe',
+      'Your microphone is off.',
+      "You can't unmute someone else",
+      "Don't watch Akshay Pant",
+      'AKSHAY PANT',
+    ]),
+    tileWithTooltips('p2', ['TANISHK BHATT', 'Mute', 'Camera', 'Remove']),
+  ];
+  const doc = {
+    body: { children: tiles },
+    querySelectorAll: (sel) => (sel === '[data-participant-id]' ? tiles : []),
+    createTreeWalker: () => ({ nextNode: () => null }),
+  };
+  const testRoster = ['AKSHAY PANT', 'TANISHK BHATT'];
+  const found = core.collectParticipantNames(doc, testRoster);
+
+  // Garbage tooltips must NOT be reported as names...
+  const junk = ['Reframe', 'Your microphone is off.', "You can't unmute someone else"];
+  junk.forEach((j) => assert.ok(!found.has(j), 'junk leaked: ' + j));
+  // ...but the real names must be found (directly and via tooltip mention).
+  assert.ok(found.has('AKSHAY PANT'), 'AKSHAY PANT should be detected');
+  assert.ok(found.has('TANISHK BHATT'), 'TANISHK BHATT should be detected');
+});
+
 console.log('\n6. Performance (high-saturation scenario: 38 students x many scans)');
 test('matchStudent stays fast at high volume (indexed matcher)', () => {
   const index = core.createIndex(ROSTER);

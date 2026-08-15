@@ -144,18 +144,28 @@
       '[aria-label*="participant" i]',
       '[data-tooltip*="people" i]',
       '[data-tooltip*="participant" i]',
+      '[jsaction*="participants" i]',
+      '[jsaction*="people" i]',
       '[data-side-toolbar*="participant" i]',
       '[data-side-toolbar*="people" i]',
     ];
     const nodes = Array.from(document.querySelectorAll(selectors.join(',')));
-    return (
-      nodes.find(
-        (el) =>
-          el.tagName === 'BUTTON' ||
-          el.getAttribute('role') === 'button' ||
-          el.getAttribute('role') === 'tab',
-      ) || null
+    const candidates = nodes.filter((el) => {
+      const role = (el.getAttribute('role') || '').toLowerCase();
+      if (role.indexOf('menu') === 0 || role === 'tooltip' || role === 'dialog') return false;
+      if (el.getAttribute('aria-hidden') === 'true') return false;
+      if (el.getAttribute('aria-disabled') === 'true') return false;
+      return true;
+    });
+    const prefer = candidates.find(
+      (el) =>
+        el.tagName === 'BUTTON' ||
+        el.getAttribute('role') === 'button' ||
+        el.getAttribute('role') === 'tab' ||
+        el.hasAttribute('jsaction') ||
+        el.hasAttribute('data-side-toolbar'),
     );
+    return prefer || candidates[0] || null;
   }
 
   // The open People panel shows a header like "38 participants" (or "3 people").
@@ -183,9 +193,11 @@
       const pressed = (btn.getAttribute('aria-pressed') || '').toLowerCase();
       if (pressed !== 'true') {
         btn.click();
-        return 'clicked';
+        await new Promise((r) => setTimeout(r, 400));
+        if (isPeoplePanelOpen()) return 'open';
+      } else {
+        return 'open';
       }
-      return 'open';
     }
     // Toolbar may be collapsed — open the overflow menu and pick People there.
     const more = Array.from(document.querySelectorAll('[role="button"], button')).find((el) =>
@@ -199,7 +211,7 @@
       );
       if (item) {
         item.click();
-        return 'clicked';
+        return 'open';
       }
     }
     return 'failed';

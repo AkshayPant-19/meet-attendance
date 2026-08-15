@@ -25,6 +25,10 @@
   var FILTER_ACCEPT = 1;
   var FILTER_SKIP = 3;
 
+  // Tooltips/actions inside a tile ("Pin X to your main screen", "Reframe",
+  // "Your microphone is off.") must never be treated as participant names.
+  var ACTION_RX = /pin|reframe|microphone|unmute|mute|watch|camera|remove|react|reaction|rename|move|screen|leave|raise|stage|share|search|fullscreen|record|message/i;
+
   function cleanName(raw) {
     return String(raw || '').replace(/\s+/g, ' ').trim();
   }
@@ -106,15 +110,15 @@
 
   /**
    * Extract participant names from a Meet-like DOM (injectable for tests).
-   * Tiles first ([data-participant-id]), then a broad leaf scan that flags any
-   * page element whose text exactly equals a roster name.
-   * Returns a Set of raw participant strings.
+   * Uses [data-participant-id] tiles first, then an all-element exact scan.
+   * Tooltip/action labels are filtered out, and a roster name is also accepted
+   * when it appears intact inside a tile's text (e.g. "Pin Akshay Pant to your
+   * main screen"). Returns a Set of raw participant strings.
    */
   function collectParticipantNames(doc, students) {
     var found = new Set();
 
-    // Precompute multi-word student names once per scan for the containment
-    // fallback, so we never re-normalize the whole roster inside each tile.
+    // Multi-word roster names, pre-normalized once for containment matching.
     var substrings = [];
     if (students && students.length) {
       for (var i = 0; i < students.length; i++) {
@@ -123,43 +127,51 @@
         }
       }
     }
+    function addRosterMatchesWithin(raw) {
+      if (!substrings.length) return;
+      var norm = normalizeName(raw);
+      for (var j = 0; j < substrings.length; j++) {
+        if (norm.indexOf(substrings[j].norm) !== -1) found.add(substrings[j].name);
+      }
+    }
 
     doc.querySelectorAll('[data-participant-id]').forEach(function (tile) {
-      var raw = null;
-      for (var i = 0; i < NAME_SELECTORS.length; i++) {
-        var el = tile.querySelector(NAME_SELECTORS[i]);
-        if (el && cleanName(el.textContent)) {
-          raw = el.textContent;
-          break;
-        }
-      }
-      if (!raw) {
-        var aria = tile.querySelector('[aria-label]');
-        raw = aria ? aria.getAttribute('aria-label') : tile.getAttribute('aria-label');
-      }
-      if (!raw) raw = tile.textContent;
-      var cleaned = cleanName(raw);
-      if (cleaned && cleaned.toLowerCase() !== 'you') found.add(cleaned);
+      var raws = [];
 
-      // TextContent fallback often pulls in extra words ("PARAS BHATT muted").
-      // If a multi-word student name appears intact inside it, record the
-      // canonical roster spelling so conservative matching still succeeds.
-      // Single-word students (e.g. "SAKSHI") are kept strict to avoid
-      // first-name/contained-name false positives.
-      if (substrings.length) {
-        var rawNorm = normalizeName(raw);
-        for (var j = 0; j < substrings.length; j++) {
-          if (rawNorm.indexOf(substrings[j].norm) !== -1) found.add(substrings[j].name);
-        }
+      for (var s = 0; s < NAME_SELECTORS.length; s++) {
+        var selEl = tile.querySelector(NAME_SELECTORS[s]);
+        if (selEl && cleanName(selEl.textContent)) raws.push(selEl.textContent);
       }
+      var ariaEls = tile.querySelectorAll('[aria-label]');
+      for (var a = 0; a < ariaEls.length; a++) {
+        var label = ariaEls[a].getAttribute('aria-label');
+        if (label && cleanName(label)) raws.push(label);
+      }
+      raws.push(tile.textContent);
+
+      var seen = new Set();
+      raws.forEach(function (raw) {
+        var cleaned = cleanName(raw);
+        if (!cleaned) return;
+        var low = cleaned.toLowerCase();
+        if (seen.has(low)) return;
+        seen.add(low);
+
+        // Never add tooltip/action text as a participant name.
+        if (low !== 'you' && !ACTION_RX.test(cleaned) && cleaned.length <= 60) {
+          found.add(cleaned);
+        }
+        // Tooltips like "Pin Akshay Pant to your main screen" still carry the
+        // person's name — find it inside the text.
+        addRosterMatchesWithin(cleaned);
+      });
     });
 
+    // All-element exact scan: catches names rendered in wrappers/rows outside
+    // [data-participant-id] tiles. Aggregator containers fail the exact
+    // compact-key match on their own, so they can't cause false hits.
     if (students && students.length) {
       var rosterKeys = new Set(students.map(compactKey));
-      // Scan every element, not just leaf nodes: Meet often renders a name in
-      // a wrapper that also contains icon/empty children, which previously
-      // slipped past the leaf-only check. Aggregator containers fail the exact
-      // compact-key match on their own, so they can't cause false hits.
       var walker = doc.createTreeWalker(doc.body, FILTER_SHOW_ELEMENT, {
         acceptNode: function () {
           return FILTER_ACCEPT;
@@ -201,6 +213,7 @@
   return {
     NAME_SELECTORS: NAME_SELECTORS,
     PRONOUNS: PRONOUNS,
+    ACTION_RX: ACTION_RX,
     cleanName: cleanName,
     normalizeName: normalizeName,
     cleanTokens: cleanTokens,
