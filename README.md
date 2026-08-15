@@ -38,8 +38,11 @@ irm https://raw.githubusercontent.com/AkshayPant-19/meet-attendance/main/install
 
 - **In-meeting panel** — a floating widget inside the Meet page; hidden until you summon it with **Ctrl+M**.
 - **Live attendance** — present/absent counts update automatically while people join and leave.
+- **Reads the whole People panel** — participants beyond the on-screen grid are counted too; the extension opens the panel automatically, keeps it open, and scrolls it so the full list renders.
 - **Custom roster** — paste your own student list, or edit the bundled default list.
 - **Fuzzy matching** — case- and punctuation-insensitive, so `SHAURYA SINGH` matches Meet's `Sh Aurya Singh`.
+- **Draggable panel** — pinned to the bottom-left by default, drag it anywhere so it never covers Meet's toolbar.
+- **Built-in debug report** — a one-click report that shows exactly what the scanner sees when something isn't detected.
 - **CSV export** — download `meeting_attendance.csv` at the end of class.
 - **Session reset** — start a clean attendance record for the next meeting.
 
@@ -69,7 +72,7 @@ irm https://raw.githubusercontent.com/AkshayPant-19/meet-attendance/main/install
 2. Open a Google Meet meeting — via a link, the calendar, or a fresh tab.
 3. Press **Ctrl+M** to open the **Meet Attendance** panel (bottom-left by default). Press **Ctrl+M** again to hide it. Drag it by its title bar if you need it elsewhere.
 4. Check the student list is filled in (it is pre-filled from `default-students.js`). Edit if needed and click **Save list**.
-5. Click **Start monitoring**. The extension automatically opens Meet's **People panel** (and re-opens it every 5s if it gets closed) so all participants — including those beyond the main layout — are visible to the scanner. It then incrementally scrolls the panel so long rosters fully render. Present / Absent / Not-in-list counts update live.
+5. Click **Start monitoring**. The extension automatically opens Meet's **People panel** and keeps it open (it re-checks every 5s): it uses the toolbar People button, or the **More options → People** menu if the toolbar is collapsed, and can expand the **"+N" chip** as a fallback. It then **scrolls the panel step-by-step**, scanning right after every step, so the entire roster (including people beyond the video grid) is read and marked. Present / Absent / Not-in-list counts update live.
 6. At the end of the meeting click **Export CSV** to download the attendance file.
 
 ### Controls
@@ -78,10 +81,11 @@ irm https://raw.githubusercontent.com/AkshayPant-19/meet-attendance/main/install
 | --- | --- |
 | `Ctrl+M` | Show / hide the panel |
 | Save list | Store the current roster for future meetings |
-| Start monitoring | Begin scanning participants every few seconds |
+| Start monitoring | Open the People panel and begin scanning participants continuously |
 | Stop | Pause scanning |
 | Export CSV | Download `meeting_attendance.csv` |
 | Reset session | Clear attendance records for a new meeting |
+| Debug | Copy a diagnostic report to the clipboard / console |
 
 ---
 
@@ -111,7 +115,11 @@ Or edit it at runtime from the extension popup (toolbar icon) or the in-meeting 
   (e.g. two Shauryas), first-name-only matching is refused and a full-name
   match is required — so a bare `SHAURYA` never falsely marks either.
 - When a tile's text contains a multi-word student name intact, that student
-  is recorded (handles `PARAS BHATT muted`-style tiles).
+  is recorded (handles `PARAS BHATT muted`-style tiles and tooltips such as
+  `Pin Akshay Pant to your main screen`).
+- Names inside the open **People panel** are read straight from its rows
+  (`role="listitem"`), so off-grid participants are counted even when their
+  tiles never appear in the video layout.
 
 ## Automated tests
 
@@ -124,8 +132,10 @@ node tests/run.js
 
 It verifies format tolerance, false-positive protection (shared surnames,
 first-name ambiguity, typos), present/absent/unknown categorization,
-extraction from simulated Meet DOMs, and performance at high saturation
-(200k matches, 60-participant scans). Run it after any change to `core.js`.
+extraction from simulated Meet DOMs (including People-panel drawer rows and
+tooltip-garbage behaviour), a short-text guard against aggregator containers,
+and performance at high saturation (200k matches, 60-participant scans).
+Run it after any change to `core.js`. Current: 27 checks / 0 failures.
 
 ---
 
@@ -133,12 +143,25 @@ extraction from simulated Meet DOMs, and performance at high saturation
 
 `content.js` injects a hidden panel into the Meet page. While monitoring:
 
-1. A `MutationObserver` reacts to DOM changes (e.g. tiles updating when someone joins).
-2. A 3-second poll guarantees re-scans even if the DOM is idle.
-3. Participant names are extracted from:
-   - participant tiles (`[data-participant-id]`), using known name containers, `aria-label`, or the tile text as fallback;
-   - a broad scan that flags any page element whose text exactly equals a roster name.
-4. Each detected name is fuzzy-matched against the roster and marked Present.
+1. The extension opens  Meet's **People panel** (toolbar button, or
+   **More options → People** when the toolbar is collapsed; "+N" chip as a last
+   resort) and re-verifies it every 5s — an 8s cooldown stops a detection miss
+   from toggling the panel closed.
+2. A paced **scroll + record loop** runs every 650ms: it scrolls the drawer one
+   step down (only when the panel is actually open — it never scrolls the video
+   grid), then scans, so row rendering and detection stay in sync. Reaching the
+   bottom resets to the top to catch anyone who joined late.
+3. A **filtered `MutationObserver`** rescans only when a change actually touches
+   participant rows or the drawer — chat/transcript/animation churn doesn't
+   trigger full-page scans.
+4. Participant names are extracted from three sources:
+   - participant tiles (`[data-participant-id]`), using known name containers,
+     `aria-label`, or the tile text as fallback;
+   - the People-panel drawer rows (`role="listitem"`), tolerating trailing
+     suffixes like `(You)` or mic-state labels;
+   - a broad scan that flags any page element whose short text exactly equals a
+     roster name.
+6. Each detected name is fuzzy-matched against the roster and marked Present.
 5. Results render in the panel and are persisted to `chrome.storage.local`.
 
 ---
@@ -168,9 +191,9 @@ meet attendance/
 3. Press F12 → Console and confirm you see `[Meet Attendance] content script loaded on ...`. If you don't, the extension isn't injected.
 
 **Some participants aren't detected**
-- One of the biggest offenders: **off-layout participants**. When a meeting has more people than fit on the video grid, Meet only keeps everyone's names in the page while the **People panel is open**. The extension tries to open it automatically when you click **Start monitoring**; if the toolbar was collapsed, it may not find the button — open the People panel manually and keep it open.
-- Google Meet frequently changes its internal DOM. If known participants go missing anyway, update the `NAME_SELECTORS` array at the top of `content.js`.
-- Participants who muted/joined late only appear once their tile is rendered — the panel updates every few seconds.
+- One of the biggest offenders: **off-layout participants**. When a meeting has more people than fit on the video grid, Meet only keeps everyone's names in the page while the **People panel is open**. The extension opens it automatically when you click **Start monitoring** (via the toolbar button or the **More options → People** menu) and keeps it open. If names are still missing, click **Debug** in the panel and paste the report — it shows whether the panel was found/open, how many tiles exist, and exactly what was detected.
+- Google Meet frequently changes its internal DOM. If known participants go missing anyway, update the `NAME_SELECTORS` array at the top of `core.js`.
+- Participants who joined late only appear once their row renders — the scanner keeps scrolling the panel, so give it a few seconds.
 
 **`Extension context invalidated` in the console**
 This appears in a Meet tab that was open while the extension was reloaded. Refresh the Meet tab.
@@ -190,7 +213,7 @@ Click **Reset session** before the next meeting to clear the previous record.
 
 ## Contributing
 
-Found a bug or have an idea? Open an issue or a pull request. Please update the `NAME_SELECTORS` and matching logic notes if you improve participant extraction — that's the part most likely to break as Meet changes.
+Found a bug or have an idea? Open an issue or a pull request. Please update the `NAME_SELECTORS` and matching logic notes if you improve participant extraction — that's the part most likely to break as Meet changes. After touching `core.js`, run `node tests/run.js`.
 
 ---
 
