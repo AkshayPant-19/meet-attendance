@@ -115,7 +115,7 @@
     };
     const header = findPanelHeader();
     if (header) addScrollers(header);
-    document.querySelectorAll('[data-participant-id]').forEach(addScrollers);
+    document.querySelectorAll('[data-participant-id], [role="listitem"], [role="list"]').forEach(addScrollers);
     scrollers.forEach(scrollOne);
   }
 

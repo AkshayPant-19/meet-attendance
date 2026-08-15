@@ -167,6 +167,20 @@
       });
     });
 
+    // People-panel drawer rows. Each row element is exactly ONE person, so a
+    // roster name found inside its text (e.g. "Tanuja Tripathi(You)" or a row
+    // with a trailing mic-state label) is a real participant — never a list of
+    // several names.
+    var drawRows = doc.querySelectorAll('[role="listitem"], [role="list"] > [data-participant-id]');
+    for (var d = 0; d < drawRows.length; d++) {
+      var row = drawRows[d];
+      var rowRaw = cleanName(row.getAttribute('aria-label') || row.textContent);
+      if (rowRaw) {
+        if (!ACTION_RX.test(rowRaw) && rowRaw.length <= 40) found.add(rowRaw);
+        addRosterMatchesWithin(rowRaw);
+      }
+    }
+
     // All-element exact scan: catches names rendered in wrappers/rows outside
     // [data-participant-id] tiles. Aggregator containers fail the exact
     // compact-key match on their own, so they can't cause false hits.
