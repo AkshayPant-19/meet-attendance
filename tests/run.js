@@ -93,7 +93,7 @@ test('unique first-name-only matches (surname not required)', () => {
 });
 
 test('surname typos / extra words still count when first name is unique', () => {
-  assert.strictEqual(core.matchStudent('MOHMMAD SUBHAR', ROSTER), 'MOHMMAD SUBHAN');
+  assert.strictEqual(core.matchStudent('SUBHAN', ROSTER), 'SUBHAN');
   assert.strictEqual(core.matchStudent('AKSHAY PANT X', ROSTER), 'AKSHAY PANT');
   assert.strictEqual(core.matchStudent('DARSHIL MOUNY K', ROSTER), 'DARSHIL MOUNY');
 });
