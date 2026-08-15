@@ -131,6 +131,28 @@
       }
     });
     render();
+    scrollParticipantsPanel();
+  }
+
+  // Scroll Meet's People panel so lazy-rendered/virtualized participant
+  // rows lower down the list still get created (and thus counted).
+  let scrollTick = 0;
+  function scrollParticipantsPanel() {
+    const row = document.querySelector('[data-participant-id]');
+    if (!row) return;
+    let el = row.parentElement;
+    while (el && el !== document.body) {
+      const st = getComputedStyle(el);
+      if (
+        (st.overflowY === 'auto' || st.overflowY === 'scroll' || st.overflowY === 'overlay') &&
+        el.scrollHeight > el.clientHeight + 5
+      ) {
+        scrollTick++;
+        el.scrollTop = scrollTick % 2 ? el.scrollHeight : 0;
+        break;
+      }
+      el = el.parentElement;
+    }
   }
 
   function scheduleScan() {
