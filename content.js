@@ -115,16 +115,14 @@
     render();
   }
 
-  function sameNames(a, b) {
-    if (!a || !b || a.length !== b.length) return false;
-    return a.every((n, i) => n === b[i]);
-  }
-
   function snapshotMinute(force) {
     if (!monitoring && !force) return;
     const names = [...present].sort();
     const prev = minuteLog[minuteLog.length - 1];
-    minuteLog.push({ t: Date.now(), names, changed: prev ? !sameNames(prev.names, names) : false });
+    const prevNames = prev ? prev.names : [];
+    const left = prevNames.filter((n) => names.indexOf(n) === -1);
+    const joined = names.filter((n) => prevNames.indexOf(n) === -1);
+    minuteLog.push({ t: Date.now(), names, changed: left.length > 0 || joined.length > 0, left, joined });
     if (minuteLog.length > 300) minuteLog = minuteLog.slice(-300);
     saveLog();
     saveRecords();
@@ -570,8 +568,15 @@
     });
     const rosterCsv = [header, ...rows].map((r) => r.map(csvCell).join(',')).join('\r\n');
 
-    const logHeader = ['Minute', 'Present Count', 'Consistent', 'Present Students'];
-    const logRows = minuteLog.map((e) => [fmtHM(e.t), e.names.length, e.changed ? 'no' : 'yes', e.names.join(', ')]);
+    const logHeader = ['Minute', 'Present Count', 'Consistent', 'Left', 'Joined', 'Present Students'];
+    const logRows = minuteLog.map((e) => [
+      fmtHM(e.t),
+      e.names.length,
+      e.changed ? 'no' : 'yes',
+      (e.left || []).join(', '),
+      (e.joined || []).join(', '),
+      e.names.join(', '),
+    ]);
     const logCsv = [logHeader, ...logRows].map((r) => r.map(csvCell).join(',')).join('\r\n');
 
     const csv = rosterCsv + '\r\n\r\n' + logCsv;
@@ -603,7 +608,13 @@
 
     const recent = minuteLog.slice(-5);
     els.logList.textContent = recent.length
-      ? recent.map((e) => fmtHM(e.t) + ' — ' + e.names.length + ' present — ' + (e.changed ? 'CHANGED' : 'consistent')).join('\n')
+      ? recent.map((e) => {
+          const parts = [fmtHM(e.t) + ' — ' + e.names.length + ' present'];
+          if (e.left && e.left.length) parts.push('left: ' + e.left.join(', '));
+          if (e.joined && e.joined.length) parts.push('joined: ' + e.joined.join(', '));
+          parts.push(e.changed ? 'CHANGED' : 'consistent');
+          return parts.join(' — ');
+        }).join('\n')
       : '—';
   }
 
