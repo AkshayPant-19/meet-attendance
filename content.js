@@ -115,10 +115,16 @@
     render();
   }
 
+  function sameNames(a, b) {
+    if (!a || !b || a.length !== b.length) return false;
+    return a.every((n, i) => n === b[i]);
+  }
+
   function snapshotMinute(force) {
     if (!monitoring && !force) return;
     const names = [...present].sort();
-    minuteLog.push({ t: Date.now(), names });
+    const prev = minuteLog[minuteLog.length - 1];
+    minuteLog.push({ t: Date.now(), names, changed: prev ? !sameNames(prev.names, names) : false });
     if (minuteLog.length > 300) minuteLog = minuteLog.slice(-300);
     saveLog();
     saveRecords();
@@ -564,8 +570,8 @@
     });
     const rosterCsv = [header, ...rows].map((r) => r.map(csvCell).join(',')).join('\r\n');
 
-    const logHeader = ['Minute', 'Present Count', 'Present Students'];
-    const logRows = minuteLog.map((e) => [fmtHM(e.t), e.names.length, e.names.join(', ')]);
+    const logHeader = ['Minute', 'Present Count', 'Consistent', 'Present Students'];
+    const logRows = minuteLog.map((e) => [fmtHM(e.t), e.names.length, e.changed ? 'no' : 'yes', e.names.join(', ')]);
     const logCsv = [logHeader, ...logRows].map((r) => r.map(csvCell).join(',')).join('\r\n');
 
     const csv = rosterCsv + '\r\n\r\n' + logCsv;
@@ -597,7 +603,7 @@
 
     const recent = minuteLog.slice(-5);
     els.logList.textContent = recent.length
-      ? recent.map((e) => fmtHM(e.t) + ' — ' + e.names.length + ' present').join('\n')
+      ? recent.map((e) => fmtHM(e.t) + ' — ' + e.names.length + ' present — ' + (e.changed ? 'CHANGED' : 'consistent')).join('\n')
       : '—';
   }
 
