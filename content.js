@@ -270,6 +270,59 @@
     render();
   }
 
+  function useDefaultList() {
+    const defaults = (window.MEET_ATTENDANCE_DEFAULT_STUDENTS || []).slice();
+    if (!defaults.length) {
+      els.status.textContent = 'No default list found.';
+      return;
+    }
+    students = defaults;
+    rebuildIndex();
+    saveStudents();
+    els.studentsBox.value = activeStudentsText();
+    render();
+    els.status.textContent = 'Loaded default list (' + defaults.length + ' students).';
+  }
+
+  function buildDebugReport() {
+    const lines = [];
+    lines.push('URL: ' + location.href);
+    lines.push('Students loaded: ' + students.length);
+    lines.push('Monitoring: ' + monitoring);
+    lines.push('People button found: ' + (findPeopleButton() ? 'yes' : 'no'));
+    lines.push('People panel open (header detected): ' + (isPeoplePanelOpen() ? 'yes' : 'no'));
+    lines.push('[data-participant-id] count: ' + document.querySelectorAll('[data-participant-id]').length);
+    const scrollables = [];
+    document.querySelectorAll('[data-participant-id]').forEach((row) => {
+      let cur = row.parentElement;
+      while (cur && cur !== document.body) {
+        const st = getComputedStyle(cur);
+        if ((st.overflowY === 'auto' || st.overflowY === 'scroll' || st.overflowY === 'overlay') && cur.scrollHeight > cur.clientHeight + 5) {
+          if (scrollables.indexOf(cur) === -1) scrollables.push(cur);
+          break;
+        }
+        cur = cur.parentElement;
+      }
+    });
+    lines.push('Participant scroll containers: ' + scrollables.length);
+    lines.push('Detected (' + lastSeen.length + '): ' + JSON.stringify(lastSeen));
+    lines.push('First 3 detected raw: ' + JSON.stringify(lastSeen.slice(0, 3)));
+    return lines.join('\n');
+  }
+
+  function copyDebugReport() {
+    const report = buildDebugReport();
+    console.log('[Meet Attendance] DEBUG REPORT\n' + report);
+    try {
+      navigator.clipboard.writeText(report).then(
+        () => { els.status.textContent = 'Debug report copied — paste it back to me.'; },
+        () => { els.status.textContent = 'Copy blocked — check console. Open DevTools (F12) for output.'; },
+      );
+    } catch (e) {
+      els.status.textContent = 'Copy failed — check console (F12).';
+    }
+  }
+
   function presentNames() {
     return C ? C.categorize(students, present, lastSeen, index).present : [];
   }
@@ -418,6 +471,10 @@
           <button id="ma-export">Export CSV</button>
           <button id="ma-reset">Reset session</button>
         </div>
+        <div class="ma-row">
+          <button id="ma-defaults">Use default list</button>
+          <button id="ma-debug">Debug</button>
+        </div>
         <div class="ma-status" id="ma-status">Hidden — press Ctrl+M to show.</div>
       </div>
     `;
@@ -449,6 +506,10 @@
     els.stopBtn.addEventListener('click', stop);
     els.exportBtn.addEventListener('click', exportCsv);
     els.resetBtn.addEventListener('click', resetSession);
+    els.defaultsBtn = host.querySelector('#ma-defaults');
+    els.debugBtn = host.querySelector('#ma-debug');
+    els.defaultsBtn.addEventListener('click', useDefaultList);
+    els.debugBtn.addEventListener('click', copyDebugReport);
 
     let open = true;
     const toggle = () => {
@@ -486,6 +547,7 @@
 
   async function boot() {
     console.log('[Meet Attendance] content script loaded on', location.href);
+    window.__meetAttendanceDebug = buildDebugReport;
     buildWidget();
     await Promise.all([loadStudents(), loadPresent()]);
     els.studentsBox.value = activeStudentsText();
