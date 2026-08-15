@@ -568,14 +568,13 @@
     });
     const rosterCsv = [header, ...rows].map((r) => r.map(csvCell).join(',')).join('\r\n');
 
-    const logHeader = ['Time', 'Present Count', 'Consistent', 'Left', 'Joined', 'Present Students'];
+    const logHeader = ['Time', 'Present Count', 'Consistent', 'Left', 'Joined'];
     const logRows = minuteLog.map((e) => [
       fmtHM(e.t),
       e.names.length,
       e.changed ? 'no' : 'yes',
       (e.left || []).join(', '),
       (e.joined || []).join(', '),
-      e.names.join(', '),
     ]);
     const logCsv = [logHeader, ...logRows].map((r) => r.map(csvCell).join(',')).join('\r\n');
 
