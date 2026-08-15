@@ -191,6 +191,15 @@ function el(kind, text, attrs, children) {
         walk(this);
         return hits;
       }
+      if (sel === '[role="listitem"]') {
+        const hits = [];
+        const walk = (n) => {
+          if (n.kind === 'row') hits.push(n);
+          (n.children || []).forEach(walk);
+        };
+        walk(this);
+        return hits;
+      }
       if (sel === '.oIy2qc' || sel === '.n8xkHc' || sel === '.Z9qxz' || sel === '[data-self-name]') {
         const hits = [];
         const walk = (n) => {
@@ -212,16 +221,20 @@ function leafText(t) {
   return { kind: 'leaf', _text: t, children: [], textContent: t, querySelector: () => null, querySelectorAll: () => [], getAttribute: () => null };
 }
 
-function makeDoc({ tiles, leaves }) {
+function makeDoc({ tiles, leaves, rows }) {
   const tileEls = tiles.map((t) =>
     el('tile', null, { 'data-participant-id': '1' }, [el('name', t, {})]),
   );
   const leafEls = (leaves || []).map(leafText);
-  const body = { children: [...tileEls, ...leafEls] };
+  const rowEls = (rows || []).map((t) =>
+    el('row', null, { role: 'listitem' }, [leafText(t)]),
+  );
+  const body = { children: [...tileEls, ...rowEls, ...leafEls] };
   return {
     body,
     querySelectorAll: function (sel) {
       if (sel === '[data-participant-id]') return tileEls;
+      if (sel.indexOf('[role="listitem"]') !== -1) return rowEls;
       return [];
     },
     createTreeWalker: function (_root, _what, filter) {
@@ -315,7 +328,50 @@ test('tooltip garbage is filtered out and roster names inside it are found (real
   assert.ok(found.has('TANISHK BHATT'), 'TANISHK BHATT should be detected');
 });
 
-console.log('\n6. Performance (high-saturation scenario: 38 students x many scans)');
+console.log('\n6. People-panel drawer rows (role="listitem")');
+test('drawer rows are extracted and matched even with (You) suffix', () => {
+  const doc = makeDoc({
+    tiles: [],
+    leaves: [],
+    rows: ['LAVANYA SINGH KARKI(You)', 'ARADHYA PANDEY', 'NIMISHA MEENA'],
+  });
+  const found = core.collectParticipantNames(doc, ROSTER);
+  assert.ok(found.has('LAVANYA SINGH KARKI'));
+  assert.ok(found.has('ARADHYA PANDEY'));
+  assert.ok(found.has('NIMISHA MEENA'));
+});
+
+test('drawer row with trailing mic-state text is still recognized', () => {
+  const row = el('row', null, { role: 'listitem' }, [leafText('DIKSHITA SHARMA'), leafText('Speaking')]);
+  const rows = [row];
+  const doc = {
+    body: { children: rows },
+    querySelectorAll: (sel) => (sel.indexOf('[role="listitem"]') !== -1 ? rows : []),
+    createTreeWalker: () => ({ nextNode: () => null }),
+  };
+  const found = core.collectParticipantNames(doc, ROSTER);
+  assert.ok(found.has('DIKSHITA SHARMA'), 'row text with state label should surface the roster name');
+});
+
+test('an un-identified "You" drawer row is not reported as a participant', () => {
+  const doc = makeDoc({ tiles: [], leaves: [], rows: ['You'] });
+  const found = core.collectParticipantNames(doc, ROSTER);
+  assert.ok(!found.has('You'), 'bare You row must be excluded');
+  assert.ok(![...found].some((n) => core.matchStudent(n, ROSTER)), 'You row must not resolve to a student');
+});
+
+test('long aggregator container is skipped (short-text exact scan guard)', () => {
+  const bloated =
+    'TANISHK BHATT and SHAURYA SINGH and KUNAL BHATT and many other people in this very long descriptive line';
+  const doc = makeDoc({ tiles: [], leaves: [bloated, 'TANISHK BHATT'] });
+  const found = core.collectParticipantNames(doc, ROSTER);
+  assert.ok(found.has('TANISHK BHATT'), 'short exact name still found');
+  // The aggregated paragraph contains real roster names but is NOT a single
+  // person — it must not be reported (only the short exact leaf may surface).
+  assert.ok(found.size <= 1, 'aggregator must not leak multiple students: ' + JSON.stringify([...found]));
+});
+
+console.log('\n7. Performance (high-saturation scenario: 38 students x many scans)');
 test('matchStudent stays fast at high volume (indexed matcher)', () => {
   const index = core.createIndex(ROSTER);
   const matcher = (p) => core.matchStudent(p, ROSTER, index);

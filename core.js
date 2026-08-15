@@ -175,15 +175,17 @@
     for (var d = 0; d < drawRows.length; d++) {
       var row = drawRows[d];
       var rowRaw = cleanName(row.getAttribute('aria-label') || row.textContent);
-      if (rowRaw) {
+      if (rowRaw && rowRaw.toLowerCase() !== 'you') {
         if (!ACTION_RX.test(rowRaw) && rowRaw.length <= 40) found.add(rowRaw);
         addRosterMatchesWithin(rowRaw);
       }
     }
 
     // All-element exact scan: catches names rendered in wrappers/rows outside
-    // [data-participant-id] tiles. Aggregator containers fail the exact
-    // compact-key match on their own, so they can't cause false hits.
+    // [data-participant-id] tiles. Only short text can be a bare name — this
+    // skips on-screen chrome (long labels, transcript lines) for both speed and
+    // correctness, and aggregator containers still can't pass the compact-key
+    // equality test.
     if (students && students.length) {
       var rosterKeys = new Set(students.map(compactKey));
       var walker = doc.createTreeWalker(doc.body, FILTER_SHOW_ELEMENT, {
@@ -194,7 +196,7 @@
       var node;
       while ((node = walker.nextNode())) {
         var text = cleanName(node.textContent);
-        if (text && rosterKeys.has(compactKey(text))) found.add(text);
+        if (text && text.length <= 60 && rosterKeys.has(compactKey(text))) found.add(text);
       }
     }
 

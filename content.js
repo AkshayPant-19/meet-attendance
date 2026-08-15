@@ -98,6 +98,9 @@
   }
 
   function scrollParticipantsPanel() {
+    // Only ever scroll the People drawer — never the video stage. If the panel
+    // is closed the scrollers we'd find belong to the grid, which must stay put.
+    if (!isPeoplePanelOpen()) return;
     const scrollers = [];
     const addScrollers = (startEl) => {
       let cur = startEl && startEl.parentElement;
@@ -173,18 +176,22 @@
     return prefer || candidates[0] || null;
   }
 
-  // The open People panel shows a header like "38 participants" / "What's new:
-  // 3 people". Meet splits text across child spans, so compare with spaces
-  // removed ("38participants").
+  // The open People panel shows a header like "38 participants", "People",
+// "People (38)", "In this call: 3 people". Meet splits text across child
+  // spans, so compare with spaces removed ("38participants", "people38").
   function findPanelHeader() {
-    const re = /^\d+(participants?|people|attendees?)/i;
+    const re = /^(people|participants?|attendees?)(\d+)?$|^\d+(people|participants?|attendees?)$/i;
     const compact = (s) => String(s).replace(/[^0-9a-z]/gi, '').toLowerCase();
-    const nodes = Array.from(document.querySelectorAll('[aria-label], div, span'));
+    const nodes = Array.from(document.querySelectorAll('[aria-label], div, span')).filter((el) => {
+      const t = (el.textContent || '').trim();
+      const a = (el.getAttribute && el.getAttribute('aria-label')) || '';
+      return (t && t.length <= 40) || (a && a.length <= 40);
+    });
     return (
       nodes.find((el) => {
         const a = (el.getAttribute && el.getAttribute('aria-label')) || '';
         if (re.test(compact(a))) return true;
-        if (el.children.length === 0 && re.test(compact(el.textContent || ''))) return true;
+        if (re.test(compact(el.textContent || ''))) return true;
         return false;
       }) || null
     );
@@ -278,7 +285,21 @@
 
   function start() {
     monitoring = true;
-    observer = new MutationObserver(scheduleScan);
+    observer = new MutationObserver((muts) => {
+      // Only rescan when the change actually touches participant rows, the
+      // drawer, or the panel list — ignores chat/transcript/animation churn so
+      // full-page scans don't fire every 150ms.
+      const relevant = muts.some((m) => {
+        if (m.type !== 'childList') return false;
+        return [].concat(Array.from(m.addedNodes), Array.from(m.removedNodes)).some((n) => {
+          if (n.nodeType !== 1) return false;
+          if (n.matches && n.matches('[data-participant-id], [role="listitem"], [role="list"]')) return true;
+          if (n.querySelector && n.querySelector('[data-participant-id], [role="listitem"], [role="list"]')) return true;
+          return false;
+        });
+      });
+      if (relevant) scheduleScan();
+    });
     observer.observe(document.body, { childList: true, subtree: true });
     ensureTimer = setInterval(ensurePeoplePanel, 5000);
     scrollTimer = setInterval(scrollAndRecord, 650);
