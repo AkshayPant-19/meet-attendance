@@ -11,8 +11,8 @@
   let observer = null;
   let scanTimer = null;
   let ensureTimer = null;
+  let scrollTimer = null;
   let lastSeen = [];
-  let host = null;
 
   const els = {};
 
@@ -78,13 +78,12 @@
       }
     });
     render();
-    scrollParticipantsPanel();
   }
 
-  // Progressive scroll + record loop: each step scrolls further down the People
-  // panel, and a scan runs right after every step, so detection keeps pace with
-  // what scrolling reveals. When the list bottom is reached it resets to the
-  // top to re-trigger lazy rendering for anyone who joined late.
+  // Progressive scroll + record loop. One step per tick (~650ms) so Meet has
+  // time to render each batch of rows before we scan — detection stays in sync
+  // with what scrolling reveals. When the list bottom is reached it resets to
+  // the top to re-trigger lazy rendering for late arrivals.
   let scrollTick = 0;
   function scrollOne(el) {
     const max = el.scrollHeight - el.clientHeight;
@@ -118,12 +117,17 @@
     if (header) addScrollers(header);
     document.querySelectorAll('[data-participant-id]').forEach(addScrollers);
     scrollers.forEach(scrollOne);
-    if (scrollers.length) scheduleScan();
+  }
+
+  function scrollAndRecord() {
+    if (!monitoring) return;
+    scrollParticipantsPanel();
+    scan();
   }
 
   function scheduleScan() {
     if (scanTimer) clearTimeout(scanTimer);
-    scanTimer = setTimeout(scan, 80);
+    scanTimer = setTimeout(scan, 150);
   }
 
   // ---------- participants panel ----------
@@ -184,6 +188,7 @@
   }
 
   function isPeoplePanelOpen() {
+    if (document.querySelector('[data-side-toolbar*="participant" i], [data-side-toolbar="people"]')) return true;
     return !!findPanelHeader();
   }
 
@@ -214,19 +219,24 @@
     return false;
   }
 
+  let lastPanelButtonClick = 0;
   async function ensurePeoplePanel() {
     if (isPeoplePanelOpen()) return 'open';
+
+    // Cooldown so a state-detection miss can't toggle the panel open/closed.
+    const now = Date.now();
+    if (now - lastPanelButtonClick < 8000) return 'cooldown';
+
     const btn = findPeopleButton();
     if (btn) {
       const pressed = (btn.getAttribute('aria-pressed') || '').toLowerCase();
-      if (pressed !== 'true') {
-        btn.click();
-        await new Promise((r) => setTimeout(r, 400));
-        if (isPeoplePanelOpen()) return 'open';
-      } else {
-        return 'open';
-      }
+      if (pressed === 'true') return 'open';
+      btn.click();
+      lastPanelButtonClick = now;
+      await new Promise((r) => setTimeout(r, 600));
+      return isPeoplePanelOpen() ? 'open' : 'unsure';
     }
+
     // Toolbar may be collapsed — open the overflow menu and pick People there.
     const more = Array.from(document.querySelectorAll('[role="button"], button')).find((el) =>
       labelMatch(el, ['more options', 'more actions']),
@@ -239,6 +249,7 @@
       );
       if (item) {
         item.click();
+        lastPanelButtonClick = now;
         return 'open';
       }
     }
@@ -253,6 +264,7 @@
     observer = new MutationObserver(scheduleScan);
     observer.observe(document.body, { childList: true, subtree: true });
     ensureTimer = setInterval(ensurePeoplePanel, 5000);
+    scrollTimer = setInterval(scrollAndRecord, 650);
     els.startBtn.disabled = true;
     els.stopBtn.disabled = false;
     els.status.textContent = 'Opening People panel...';
@@ -277,6 +289,10 @@
     if (ensureTimer) {
       clearInterval(ensureTimer);
       ensureTimer = null;
+    }
+    if (scrollTimer) {
+      clearInterval(scrollTimer);
+      scrollTimer = null;
     }
     els.startBtn.disabled = false;
     els.stopBtn.disabled = true;
@@ -600,21 +616,23 @@
 
   // Drag the panel by its header so it never blocks Meet's toolbar/People button.
   function makeDraggable(header) {
+    if (!header) return;
     let dragState = null;
     header.addEventListener('mousedown', (e) => {
       if (e.target.closest('button, textarea, a')) return;
-      const rect = host.getBoundingClientRect();
+      if (!els.host) return;
+      const rect = els.host.getBoundingClientRect();
       dragState = { dx: e.clientX - rect.left, dy: e.clientY - rect.top };
       e.preventDefault();
     });
     document.addEventListener('mousemove', (e) => {
       if (!dragState) return;
-      const left = Math.max(0, Math.min(window.innerWidth - host.offsetWidth, e.clientX - dragState.dx));
-      const top = Math.max(0, Math.min(window.innerHeight - host.offsetHeight, e.clientY - dragState.dy));
-      host.style.left = left + 'px';
-      host.style.top = top + 'px';
-      host.style.right = 'auto';
-      host.style.bottom = 'auto';
+      const left = Math.max(0, Math.min(window.innerWidth - els.host.offsetWidth, e.clientX - dragState.dx));
+      const top = Math.max(0, Math.min(window.innerHeight - els.host.offsetHeight, e.clientY - dragState.dy));
+      els.host.style.left = left + 'px';
+      els.host.style.top = top + 'px';
+      els.host.style.right = 'auto';
+      els.host.style.bottom = 'auto';
     });
     document.addEventListener('mouseup', () => {
       dragState = null;
