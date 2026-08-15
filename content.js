@@ -81,19 +81,19 @@
     scrollParticipantsPanel();
   }
 
-  // Progressively scroll every participant scroll container (the People panel
-  // list in particular, not just grid tiles) so lazy-rendered/virtualized rows
-  // get created step-by-step down the whole list. Every other scroll resets to
-  // the top to re-trigger rendering.
+  // Progressive scroll + record loop: each step scrolls further down the People
+  // panel, and a scan runs right after every step, so detection keeps pace with
+  // what scrolling reveals. When the list bottom is reached it resets to the
+  // top to re-trigger lazy rendering for anyone who joined late.
   let scrollTick = 0;
   function scrollOne(el) {
     const max = el.scrollHeight - el.clientHeight;
     if (max <= 0) return;
     scrollTick++;
-    if (scrollTick % 2 === 0) {
+    const step = Math.max(150, Math.round(max / 8));
+    if (el.scrollTop >= max - 2) {
       el.scrollTop = 0;
     } else {
-      const step = Math.max(150, Math.round(max / 8));
       el.scrollTop = Math.min(el.scrollTop + step, max);
     }
   }
@@ -118,11 +118,12 @@
     if (header) addScrollers(header);
     document.querySelectorAll('[data-participant-id]').forEach(addScrollers);
     scrollers.forEach(scrollOne);
+    if (scrollers.length) scheduleScan();
   }
 
   function scheduleScan() {
     if (scanTimer) clearTimeout(scanTimer);
-    scanTimer = setTimeout(scan, 150);
+    scanTimer = setTimeout(scan, 80);
   }
 
   // ---------- participants panel ----------
