@@ -263,6 +263,26 @@ test('off-grid names in a leaf element are found by broad scan', () => {
   assert.ok(found.has('ARADHYA PANDEY'));
 });
 
+test('names wrapped in non-leaf elements (with icon children) are found', () => {
+  const wrapped = (text) =>
+    el('wrapper', null, {}, [
+      leafText(text),
+      leafText(''),  // empty icon-like node
+    ]);
+  const doc = {
+    body: { children: [wrapped('SHAURYA SINGH'), wrapped('NIMISHA MEENA')] },
+    querySelectorAll: (sel) => (sel === '[data-participant-id]' ? [] : []),
+    createTreeWalker: function (root, what, filter) {
+      const acceptAll = this.body.children.filter((n) => filter.acceptNode(n) === 1);
+      let i = 0;
+      return { nextNode: () => acceptAll[i++] || null };
+    },
+  };
+  const found = core.collectParticipantNames(doc, ROSTER);
+  assert.ok(found.has('SHAURYA SINGH'));
+  assert.ok(found.has('NIMISHA MEENA'));
+});
+
 console.log('\n6. Performance (high-saturation scenario: 38 students x many scans)');
 test('matchStudent stays fast at high volume (indexed matcher)', () => {
   const index = core.createIndex(ROSTER);

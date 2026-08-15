@@ -156,11 +156,13 @@
 
     if (students && students.length) {
       var rosterKeys = new Set(students.map(compactKey));
+      // Scan every element, not just leaf nodes: Meet often renders a name in
+      // a wrapper that also contains icon/empty children, which previously
+      // slipped past the leaf-only check. Aggregator containers fail the exact
+      // compact-key match on their own, so they can't cause false hits.
       var walker = doc.createTreeWalker(doc.body, FILTER_SHOW_ELEMENT, {
-        acceptNode: function (el) {
-          return el.children.length === 0 && cleanName(el.textContent)
-            ? FILTER_ACCEPT
-            : FILTER_SKIP;
+        acceptNode: function () {
+          return FILTER_ACCEPT;
         },
       });
       var node;
