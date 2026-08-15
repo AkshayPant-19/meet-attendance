@@ -186,6 +186,33 @@
     return !!findPanelHeader();
   }
 
+  // When the meeting has more people than fit the grid, Meet shows a "+N"
+  // chip. Clicking it expands the stage so the temporarily hidden participants
+  // become real tiles in the DOM (and thus readable), without needing the
+  // People panel at all.
+  function findOverflowChip() {
+    return (
+      Array.from(document.querySelectorAll('[aria-label], [role="button"], button, [jsaction]')).find((el) => {
+        const a = (el.getAttribute('aria-label') || '').toLowerCase();
+        const t = (el.textContent || '').trim();
+        const role = (el.getAttribute('role') || '').toLowerCase();
+        if (role.indexOf('menu') === 0 || role === 'tooltip') return false;
+        if (/show (more|other) participants|more participants|view all participants/i.test(a)) return true;
+        if (/^\+\d+$/.test(t) && /participant|more/i.test(a)) return true;
+        return false;
+      }) || null
+    );
+  }
+
+  function tryExpandOverflow() {
+    const chip = findOverflowChip();
+    if (chip) {
+      chip.click();
+      return true;
+    }
+    return false;
+  }
+
   async function ensurePeoplePanel() {
     if (isPeoplePanelOpen()) return 'open';
     const btn = findPeopleButton();
@@ -214,6 +241,9 @@
         return 'open';
       }
     }
+    // Last resort that doesn't need the button at all: expand the "+N" chip so
+    // hidden participants become readable tiles.
+    if (tryExpandOverflow()) return 'expanded';
     return 'failed';
   }
 
@@ -303,6 +333,8 @@
     lines.push('Monitoring: ' + monitoring);
     lines.push('People button found: ' + (findPeopleButton() ? 'yes' : 'no'));
     lines.push('People panel open (header detected): ' + (isPeoplePanelOpen() ? 'yes' : 'no'));
+    lines.push('More-options button found: ' + (Array.from(document.querySelectorAll('[role="button"], button')).some((el) => labelMatch(el, ['more options', 'more actions'])) ? 'yes' : 'no'));
+    lines.push('Overflow "+N" chip found: ' + (findOverflowChip() ? 'yes' : 'no'));
     lines.push('[data-participant-id] count: ' + document.querySelectorAll('[data-participant-id]').length);
     const scrollables = [];
     document.querySelectorAll('[data-participant-id]').forEach((row) => {
@@ -317,8 +349,22 @@
       }
     });
     lines.push('Participant scroll containers: ' + scrollables.length);
+    const btnInfo = [];
+    let btnCount = 0;
+    document.querySelectorAll('[role="button"], button, [role="tab"]').forEach((b) => {
+      btnCount++;
+      if (btnInfo.length < 25) {
+        btnInfo.push(
+          b.tagName +
+            ' [aria=' + (b.getAttribute('aria-label') || '') +
+            '] [js=' + (b.getAttribute('jsaction') || '').slice(0, 40) +
+            '] [side=' + (b.getAttribute('data-side-toolbar') || '') +
+            '] [tip=' + (b.getAttribute('data-tooltip') || '') + ']',
+        );
+      }
+    });
+    lines.push('Clickable elements: ' + btnCount + ' (sample 25): ' + JSON.stringify(btnInfo));
     lines.push('Detected (' + lastSeen.length + '): ' + JSON.stringify(lastSeen));
-    lines.push('First 3 detected raw: ' + JSON.stringify(lastSeen.slice(0, 3)));
     return lines.join('\n');
   }
 
