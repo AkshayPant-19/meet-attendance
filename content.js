@@ -368,6 +368,7 @@
     snapshotMinute();
     els.startBtn.disabled = true;
     els.stopBtn.disabled = false;
+    if (els.header) els.header.classList.add('ma-live');
     els.status.textContent = 'Opening People panel...';
     scan();
     scheduleScan();
@@ -407,6 +408,7 @@
     }
     els.startBtn.disabled = false;
     els.stopBtn.disabled = true;
+    if (els.header) els.header.classList.remove('ma-live');
     els.status.textContent = 'Stopped';
   }
 
@@ -589,6 +591,23 @@
   }
 
   // ---------- UI ----------
+  function setChips(container, items, kind) {
+    container.textContent = '';
+    if (!items || !items.length) {
+      container.textContent = '—';
+      return;
+    }
+    items.forEach((name) => {
+      const c = document.createElement('span');
+      c.className = 'ma-chip ma-chip-' + kind;
+      if (kind === 'present' && records[name] && records[name].join) {
+        c.title = 'Joined ' + fmtTime(records[name].join);
+      }
+      c.textContent = name;
+      container.appendChild(c);
+    });
+  }
+
   function render() {
     const presentList = presentNames();
     const absentList = absentNames();
@@ -599,11 +618,9 @@
     els.unknownCount.textContent = unknown.length;
     els.detectedCount.textContent = lastSeen.length;
 
-    els.presentList.textContent = presentList.length
-      ? presentList.map((s) => (records[s] && records[s].join ? s + ' (' + fmtTime(records[s].join) + ')' : s)).join(', ')
-      : '—';
-    els.absentList.textContent = absentList.length ? absentList.join(', ') : '—';
-    els.unknownList.textContent = unknown.length ? unknown.join(', ') : '—';
+    setChips(els.presentList, presentList, 'present');
+    setChips(els.absentList, absentList, 'absent');
+    setChips(els.unknownList, unknown, 'unknown');
 
     const recent = minuteLog.slice(-5);
     els.logList.textContent = recent.length
@@ -627,73 +644,145 @@
           left: 16px;
           bottom: 24px;
           z-index: 999999;
-          width: 320px;
-          max-height: 85vh;
-          background: #fff;
-          border: 1px solid #d5dbe1;
-          border-radius: 10px;
-          box-shadow: 0 4px 20px rgba(0,0,0,.2);
-          font-family: Roboto, Arial, sans-serif;
+          width: 340px;
+          max-height: 86vh;
+          background: #ffffff;
+          border: 1px solid #e2e8f0;
+          border-radius: 16px;
+          box-shadow: 0 12px 40px rgba(15, 23, 42, .18);
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
           font-size: 13px;
-          color: #202124;
+          color: #0f172a;
           display: flex;
           flex-direction: column;
           box-sizing: border-box;
+          overflow: hidden;
         }
         #meet-attendance-widget * { box-sizing: border-box; }
         #meet-attendance-widget .ma-header {
-          padding: 10px 12px;
-          border-bottom: 1px solid #e8eaed;
+          padding: 12px 14px;
+          border-bottom: 1px solid #eef2f6;
           display: flex;
           justify-content: space-between;
           align-items: center;
-          font-weight: 500;
-          color: #1a73e8;
+          font-weight: 600;
+          color: #1e293b;
           cursor: move;
           user-select: none;
+          background: #f8fafc;
+        }
+        #meet-attendance-widget .ma-title { display: flex; align-items: center; gap: 8px; }
+        #meet-attendance-widget .ma-dot {
+          width: 8px; height: 8px; border-radius: 50%; background: #94a3b8;
+          transition: background .2s ease, box-shadow .2s ease;
+        }
+        #meet-attendance-widget .ma-header.ma-live .ma-dot {
+          background: #22c55e; box-shadow: 0 0 0 3px rgba(34, 197, 94, .18);
         }
         #meet-attendance-widget .ma-toggle {
-          background: #1a73e8;
+          background: #0f172a;
           color: #fff;
           border: none;
-          border-radius: 6px;
-          padding: 5px 10px;
+          border-radius: 8px;
+          padding: 6px 12px;
           cursor: pointer;
           font-size: 12px;
+          font-weight: 600;
         }
-        #meet-attendance-widget .ma-toggle:disabled { background: #bdc1c6; cursor: default; }
-        #meet-attendance-widget .ma-toggle.ma-ghost { background: transparent; color: #1a73e8; border: 1px solid #1a73e8; }
-        #meet-attendance-widget .ma-body { padding: 10px 12px; overflow-y: auto; }
-        #meet-attendance-widget .ma-label { font-weight: 500; margin: 8px 0 4px; }
+        #meet-attendance-widget .ma-toggle:hover { background: #1e293b; }
+        #meet-attendance-widget .ma-body { padding: 12px 14px; overflow-y: auto; }
+        #meet-attendance-widget .ma-label {
+          font-weight: 600;
+          font-size: 11px;
+          text-transform: uppercase;
+          letter-spacing: .05em;
+          color: #64748b;
+          margin: 14px 0 6px;
+        }
+        #meet-attendance-widget .ma-label:first-child { margin-top: 2px; }
         #meet-attendance-widget textarea {
           width: 100%;
           height: 70px;
-          border: 1px solid #dadce0;
-          border-radius: 6px;
-          padding: 6px;
+          border: 1px solid #cbd5e1;
+          border-radius: 10px;
+          padding: 8px;
           font-size: 12px;
+          font-family: inherit;
           resize: vertical;
+          outline: none;
         }
-        #meet-attendance-widget .ma-stats { display: flex; gap: 12px; margin: 8px 0; }
-        #meet-attendance-widget .ma-stat { flex: 1; background: #f8f9fa; border-radius: 6px; padding: 6px; text-align: center; }
-        #meet-attendance-widget .ma-stat b { display: block; font-size: 18px; }
-        #meet-attendance-widget .ma-section { border-top: 1px solid #e8eaed; padding-top: 6px; margin-top: 8px; }
-        #meet-attendance-widget .ma-list { word-break: break-word; white-space: pre-wrap; }
-        #meet-attendance-widget .ma-list.ma-empty { color: #80868b; }
-        #meet-attendance-widget .ma-row { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
-        #meet-attendance-widget .ma-row button {
-          border: 1px solid #dadce0;
+        #meet-attendance-widget textarea:focus {
+          border-color: #2563eb;
+          box-shadow: 0 0 0 3px rgba(37, 99, 235, .12);
+        }
+        #meet-attendance-widget .ma-stats { display: flex; gap: 8px; margin: 12px 0 2px; }
+        #meet-attendance-widget .ma-stat {
+          flex: 1;
           background: #fff;
-          border-radius: 6px;
-          padding: 5px 10px;
+          border: 1px solid #e2e8f0;
+          border-radius: 12px;
+          padding: 8px 4px;
+          text-align: center;
+          font-size: 11px;
+          color: #64748b;
+        }
+        #meet-attendance-widget .ma-stat b { display: block; font-size: 20px; font-weight: 700; }
+        #meet-attendance-widget .ma-stat.ma-present b { color: #16a34a; }
+        #meet-attendance-widget .ma-stat.ma-absent b { color: #dc2626; }
+        #meet-attendance-widget .ma-stat.ma-unknown b { color: #64748b; }
+        #meet-attendance-widget .ma-section {
+          border-top: 1px solid #eef2f6;
+          padding-top: 2px;
+          margin-top: 10px;
+        }
+        #meet-attendance-widget .ma-list { display: flex; flex-wrap: wrap; gap: 6px; }
+        #meet-attendance-widget .ma-chip {
+          display: inline-flex;
+          align-items: center;
+          max-width: 100%;
+          padding: 4px 10px;
+          border-radius: 999px;
+          font-size: 12px;
+          font-weight: 500;
+          border: 1px solid transparent;
+          cursor: default;
+        }
+        #meet-attendance-widget .ma-chip.ma-chip-present { background: #dcfce7; color: #166534; border-color: #bbf7d0; }
+        #meet-attendance-widget .ma-chip.ma-chip-absent { background: #fee2e2; color: #991b1b; border-color: #fecaca; }
+        #meet-attendance-widget .ma-chip.ma-chip-unknown { background: #f1f5f9; color: #475569; border-color: #e2e8f0; }
+        #meet-attendance-widget .ma-chip.ma-chip-detected { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+        #meet-attendance-widget .ma-log {
+          background: #f8fafc;
+          border: 1px solid #eef2f6;
+          border-radius: 10px;
+          padding: 8px 10px;
+          font-size: 11px;
+          color: #475569;
+          line-height: 1.6;
+          white-space: pre-wrap;
+        }
+        #meet-attendance-widget .ma-row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+        #meet-attendance-widget .ma-row button {
+          border: 1px solid #cbd5e1;
+          background: #fff;
+          border-radius: 10px;
+          padding: 7px 12px;
           cursor: pointer;
           font-size: 12px;
+          font-weight: 600;
+          color: #334155;
+          transition: background .15s ease, border-color .15s ease;
         }
-        #meet-attendance-widget .ma-row button:hover { background: #f1f3f4; }
-        #meet-attendance-widget .ma-status { margin-top: 8px; font-size: 12px; color: #5f6368; }
+        #meet-attendance-widget .ma-row button:hover { background: #f1f5f9; border-color: #94a3b8; }
+        #meet-attendance-widget .ma-row button:disabled { opacity: .45; cursor: default; }
+        #meet-attendance-widget .ma-row button.ma-primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+        #meet-attendance-widget .ma-row button.ma-primary:hover { background: #1d4ed8; border-color: #1d4ed8; }
+        #meet-attendance-widget .ma-row button.ma-danger { background: #dc2626; border-color: #dc2626; color: #fff; }
+        #meet-attendance-widget .ma-row button.ma-danger:hover { background: #b91c1c; border-color: #b91c1c; }
+        #meet-attendance-widget .ma-status { margin-top: 12px; font-size: 12px; color: #64748b; }
       </style>
-      <div class="ma-header">
-        <span>Meet Attendance</span>
+      <div class="ma-header" id="ma-header">
+        <span class="ma-title"><span class="ma-dot"></span>Meet Attendance</span>
         <button class="ma-toggle" id="ma-toggle">+ Open</button>
       </div>
       <div class="ma-body" id="ma-body">
@@ -701,16 +790,16 @@
         <textarea id="ma-students" placeholder="John Doe&#10;Jane Smith&#10;..."></textarea>
         <div class="ma-row">
           <button id="ma-save">Save list</button>
-          <button id="ma-start">Start monitoring</button>
-          <button id="ma-stop" disabled>Stop</button>
+          <button class="ma-primary" id="ma-start">Start monitoring</button>
+          <button class="ma-danger" id="ma-stop" disabled>Stop</button>
         </div>
         <div class="ma-stats">
-          <div class="ma-stat"><b id="ma-present">0</b>Present</div>
-          <div class="ma-stat"><b id="ma-absent">0</b>Absent</div>
-          <div class="ma-stat"><b id="ma-unknown">0</b>Not in list</div>
+          <div class="ma-stat ma-present"><b id="ma-present">0</b>Present</div>
+          <div class="ma-stat ma-absent"><b id="ma-absent">0</b>Absent</div>
+          <div class="ma-stat ma-unknown"><b id="ma-unknown">0</b>Not in list</div>
         </div>
         <div class="ma-section">
-          <div class="ma-label">Detected participants (<span id="ma-detected">0</span>)</div>
+          <div class="ma-label">Detected (<span id="ma-detected">0</span>)</div>
           <div class="ma-list" id="ma-detected-list"></div>
           <div class="ma-label">Present</div>
           <div class="ma-list" id="ma-present-list"></div>
@@ -721,7 +810,7 @@
         </div>
         <div class="ma-section">
           <div class="ma-label">Session log (every 5 min)</div>
-          <div class="ma-list" id="ma-log-list"></div>
+          <div class="ma-log" id="ma-log-list"></div>
         </div>
         <div class="ma-row">
           <button id="ma-export">Export CSV</button>
@@ -823,7 +912,7 @@
   (function patchRenderDetected() {
     const origRender = render;
     render = function () {
-      els.detectedList.textContent = lastSeen.length ? lastSeen.join(', ') : '—';
+      setChips(els.detectedList, lastSeen, 'detected');
       els.detectedCount.textContent = lastSeen.length;
       origRender();
     };
