@@ -1,17 +1,23 @@
 (() => {
   const STUDENTS_KEY = 'meet_attendance_students';
   const PRESENT_KEY = 'meet_attendance_present';
+  const RECORDS_KEY = 'meet_attendance_records';
+  const LOG_KEY = 'meet_attendance_log';
+  const MEETING_KEY = 'meet_attendance_meeting';
 
   if (window.__meetAttendanceLoaded) return;
   window.__meetAttendanceLoaded = true;
 
   let students = [];
   let present = new Set();
+  let records = {};
+  let minuteLog = [];
   let monitoring = false;
   let observer = null;
   let scanTimer = null;
   let ensureTimer = null;
   let scrollTimer = null;
+  let logTimer = null;
   let lastSeen = [];
 
   const els = {};
@@ -37,8 +43,30 @@
     present = new Set(data[PRESENT_KEY] || []);
   }
 
+  async function loadRecords() {
+    const data = await chromeGet(RECORDS_KEY);
+    records = data[RECORDS_KEY] || {};
+  }
+
+  async function loadLog() {
+    const data = await chromeGet(LOG_KEY);
+    minuteLog = Array.isArray(data[LOG_KEY]) ? data[LOG_KEY] : [];
+  }
+
+  function meetingCode() {
+    return (location.pathname || '').split('/').filter(Boolean)[0] || '';
+  }
+
   function savePresent() {
     try { chrome.storage.local.set({ [PRESENT_KEY]: [...present] }); } catch (e) {}
+  }
+
+  function saveRecords() {
+    try { chrome.storage.local.set({ [RECORDS_KEY]: records }); } catch (e) {}
+  }
+
+  function saveLog() {
+    try { chrome.storage.local.set({ [LOG_KEY]: minuteLog }); } catch (e) {}
   }
 
   function saveStudents() {
@@ -69,15 +97,31 @@
     if (!monitoring) return;
     const names = collectParticipantNames();
     lastSeen = [...names];
+    const now = Date.now();
 
     names.forEach((n) => {
       const student = matchStudent(n);
-      if (student && !present.has(student)) {
-        present.add(student);
-        savePresent();
+      if (student) {
+        if (!present.has(student)) {
+          present.add(student);
+          records[student] = { join: now, leave: now };
+          savePresent();
+          saveRecords();
+        } else if (records[student]) {
+          records[student].leave = now;
+        }
       }
     });
     render();
+  }
+
+  function snapshotMinute(force) {
+    if (!monitoring && !force) return;
+    const names = [...present].sort();
+    minuteLog.push({ t: Date.now(), names });
+    if (minuteLog.length > 300) minuteLog = minuteLog.slice(-300);
+    saveLog();
+    saveRecords();
   }
 
   // Progressive scroll + record loop. One step per tick (~650ms) so Meet has
@@ -285,6 +329,19 @@
 
   function start() {
     monitoring = true;
+    // If the stored records belong to a different meeting, start clean.
+    chromeGet(MEETING_KEY).then((data) => {
+      const prev = data[MEETING_KEY];
+      if (prev && prev !== meetingCode()) {
+        present.clear();
+        records = {};
+        minuteLog = [];
+        savePresent();
+        saveRecords();
+        saveLog();
+      }
+      chrome.storage.local.set({ [MEETING_KEY]: meetingCode() });
+    });
     observer = new MutationObserver((muts) => {
       // Only rescan when the change actually touches participant rows, the
       // drawer, or the panel list — ignores chat/transcript/animation churn so
@@ -303,6 +360,8 @@
     observer.observe(document.body, { childList: true, subtree: true });
     ensureTimer = setInterval(ensurePeoplePanel, 5000);
     scrollTimer = setInterval(scrollAndRecord, 650);
+    logTimer = setInterval(snapshotMinute, 60000);
+    snapshotMinute();
     els.startBtn.disabled = true;
     els.stopBtn.disabled = false;
     els.status.textContent = 'Opening People panel...';
@@ -316,6 +375,12 @@
 
   function stop() {
     monitoring = false;
+    const now = Date.now();
+    present.forEach((name) => {
+      if (records[name]) records[name].leave = now;
+    });
+    saveRecords();
+    snapshotMinute(true);
     if (observer) {
       observer.disconnect();
       observer = null;
@@ -332,6 +397,10 @@
       clearInterval(scrollTimer);
       scrollTimer = null;
     }
+    if (logTimer) {
+      clearInterval(logTimer);
+      logTimer = null;
+    }
     els.startBtn.disabled = false;
     els.stopBtn.disabled = true;
     els.status.textContent = 'Stopped';
@@ -340,8 +409,12 @@
   function resetSession() {
     stop();
     present.clear();
+    records = {};
+    minuteLog = [];
     lastSeen = [];
     savePresent();
+    saveRecords();
+    saveLog();
     render();
     els.status.textContent = 'Session reset — press Start to monitor again';
   }
@@ -420,6 +493,8 @@
     });
     lines.push('Clickable elements: ' + btnCount + ' (sample 25): ' + JSON.stringify(btnInfo));
     lines.push('Detected (' + lastSeen.length + '): ' + JSON.stringify(lastSeen));
+    lines.push('Students with timestamps: ' + Object.keys(records).length);
+    lines.push('Minute-log entries: ' + minuteLog.length);
     return lines.join('\n');
   }
 
@@ -449,12 +524,51 @@
   }
 
   // ---------- export ----------
+  function pad2(x) {
+    return String(x).padStart(2, '0');
+  }
+
+  function fmtTime(ms) {
+    const d = new Date(ms);
+    return pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds());
+  }
+
+  function fmtHM(ms) {
+    const d = new Date(ms);
+    return pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+  }
+
+  function fmtDur(ms) {
+    if (typeof ms !== 'number') return '';
+    const m = Math.max(1, Math.round(ms / 60000));
+    const h = Math.floor(m / 60);
+    return h ? h + 'h ' + (m % 60) + 'm' : m + 'm';
+  }
+
+  function csvCell(v) {
+    return '"' + String(v).replace(/"/g, '""') + '"';
+  }
+
   function exportCsv() {
-    const rows = [
-      ['Student Name', 'Status'],
-      ...students.map((s) => [s, present.has(s) ? 'Present' : 'Absent']),
-    ];
-    const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\r\n');
+    const header = ['Student Name', 'Status', 'Join Time', 'Leave Time', 'Duration'];
+    const rows = students.map((s) => {
+      const r = records[s];
+      const dur = r && r.join ? r.leave - r.join : null;
+      return [
+        s,
+        present.has(s) ? 'Present' : 'Absent',
+        r && r.join ? fmtTime(r.join) : '',
+        r && r.leave ? fmtTime(r.leave) : '',
+        fmtDur(dur),
+      ];
+    });
+    const rosterCsv = [header, ...rows].map((r) => r.map(csvCell).join(',')).join('\r\n');
+
+    const logHeader = ['Minute', 'Present Count', 'Present Students'];
+    const logRows = minuteLog.map((e) => [fmtHM(e.t), e.names.length, e.names.join(', ')]);
+    const logCsv = [logHeader, ...logRows].map((r) => r.map(csvCell).join(',')).join('\r\n');
+
+    const csv = rosterCsv + '\r\n\r\n' + logCsv;
     const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -475,9 +589,16 @@
     els.unknownCount.textContent = unknown.length;
     els.detectedCount.textContent = lastSeen.length;
 
-    els.presentList.textContent = presentList.length ? presentList.join(', ') : '—';
+    els.presentList.textContent = presentList.length
+      ? presentList.map((s) => (records[s] && records[s].join ? s + ' (' + fmtTime(records[s].join) + ')' : s)).join(', ')
+      : '—';
     els.absentList.textContent = absentList.length ? absentList.join(', ') : '—';
     els.unknownList.textContent = unknown.length ? unknown.join(', ') : '—';
+
+    const recent = minuteLog.slice(-5);
+    els.logList.textContent = recent.length
+      ? recent.map((e) => fmtHM(e.t) + ' — ' + e.names.length + ' present').join('\n')
+      : '—';
   }
 
   function buildWidget() {
@@ -582,6 +703,10 @@
           <div class="ma-label">Detected but not in list</div>
           <div class="ma-list" id="ma-unknown-list"></div>
         </div>
+        <div class="ma-section">
+          <div class="ma-label">Session log (per minute)</div>
+          <div class="ma-list" id="ma-log-list"></div>
+        </div>
         <div class="ma-row">
           <button id="ma-export">Export CSV</button>
           <button id="ma-reset">Reset session</button>
@@ -614,6 +739,7 @@
     els.presentList = host.querySelector('#ma-present-list');
     els.absentList = host.querySelector('#ma-absent-list');
     els.unknownList = host.querySelector('#ma-unknown-list');
+    els.logList = host.querySelector('#ma-log-list');
     els.status = host.querySelector('#ma-status');
     els.header = host.querySelector('.ma-header');
     makeDraggable(els.header);
@@ -691,7 +817,7 @@
     console.log('[Meet Attendance] content script loaded on', location.href);
     window.__meetAttendanceDebug = buildDebugReport;
     buildWidget();
-    await Promise.all([loadStudents(), loadPresent()]);
+    await Promise.all([loadStudents(), loadPresent(), loadRecords(), loadLog()]);
     els.studentsBox.value = activeStudentsText();
     render();
     console.log('[Meet Attendance] widget built, press Ctrl+M to show it');
