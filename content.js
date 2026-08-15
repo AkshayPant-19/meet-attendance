@@ -10,7 +10,6 @@
   let monitoring = false;
   let observer = null;
   let scanTimer = null;
-  let pollTimer = null;
   let lastSeen = [];
   let host = null;
 
@@ -157,7 +156,7 @@
 
   function scheduleScan() {
     if (scanTimer) clearTimeout(scanTimer);
-    scanTimer = setTimeout(scan, 800);
+    scanTimer = setTimeout(scan, 150);
   }
 
   // ---------- participants panel ----------
@@ -202,7 +201,6 @@
     monitoring = true;
     observer = new MutationObserver(scheduleScan);
     observer.observe(document.body, { childList: true, subtree: true });
-    pollTimer = setInterval(scan, 3000);
     els.startBtn.disabled = true;
     els.stopBtn.disabled = false;
     els.status.textContent = 'Monitoring...';
@@ -222,10 +220,6 @@
     if (scanTimer) {
       clearTimeout(scanTimer);
       scanTimer = null;
-    }
-    if (pollTimer) {
-      clearInterval(pollTimer);
-      pollTimer = null;
     }
     els.startBtn.disabled = false;
     els.stopBtn.disabled = true;
