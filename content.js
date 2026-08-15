@@ -138,6 +138,44 @@
     scanTimer = setTimeout(scan, 800);
   }
 
+  // ---------- participants panel ----------
+  // Off-grid participants are only rendered once Meet's People panel is
+  // open. Best-effort: open it automatically so everyone can be counted.
+  const labelMatch = (el, words) => {
+    const text =
+      ((el.getAttribute('aria-label') || '') + ' ' +
+       (el.getAttribute('data-tooltip') || '') + ' ' +
+       (el.getAttribute('title') || '') + ' ' +
+       (el.textContent || '')).toLowerCase();
+    return words.some((w) => text.includes(w));
+  };
+
+  async function openParticipantsPanel() {
+    const btn = Array.from(document.querySelectorAll('[role="button"], button, [role="tab"]')).find((el) =>
+      labelMatch(el, ['people', 'participants']),
+    );
+    if (btn) {
+      btn.click();
+      return true;
+    }
+    // Toolbar may be collapsed — open the overflow menu and pick People there.
+    const more = Array.from(document.querySelectorAll('[role="button"], button')).find((el) =>
+      labelMatch(el, ['more options']),
+    );
+    if (more) {
+      more.click();
+      await new Promise((r) => setTimeout(r, 300));
+      const item = Array.from(document.querySelectorAll('[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]')).find((el) =>
+        labelMatch(el, ['people', 'participants']),
+      );
+      if (item) {
+        item.click();
+        return true;
+      }
+    }
+    return false;
+  }
+
   function start() {
     monitoring = true;
     observer = new MutationObserver(scheduleScan);
@@ -148,6 +186,9 @@
     els.status.textContent = 'Monitoring...';
     scan();
     scheduleScan();
+    openParticipantsPanel().then((opened) => {
+      if (opened) els.status.textContent = 'Monitoring... People panel opened.';
+    });
   }
 
   function stop() {

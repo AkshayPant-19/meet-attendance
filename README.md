@@ -69,7 +69,7 @@ irm https://raw.githubusercontent.com/AkshayPant-19/meet-attendance/main/install
 2. Open a Google Meet meeting — via a link, the calendar, or a fresh tab.
 3. Press **Ctrl+M** to open the **Meet Attendance** panel (top-right). Press **Ctrl+M** again to hide it.
 4. Check the student list is filled in (it is pre-filled from `default-students.js`). Edit if needed and click **Save list**.
-5. Click **Start monitoring**. Present / Absent / Not-in-list counts update live.
+5. Click **Start monitoring**. The extension automatically opens Meet's **People panel** so all participants (including those beyond the main layout) are visible to the scanner. Present / Absent / Not-in-list counts update live.
 6. At the end of the meeting click **Export CSV** to download the attendance file.
 
 ### Controls
@@ -144,7 +144,8 @@ meet attendance/
 3. Press F12 → Console and confirm you see `[Meet Attendance] content script loaded on ...`. If you don't, the extension isn't injected.
 
 **Some participants aren't detected**
-- Google Meet frequently changes its internal DOM. If known participants go missing, update the `NAME_SELECTORS` array at the top of `content.js`.
+- One of the biggest offenders: **off-layout participants**. When a meeting has more people than fit on the video grid, Meet only keeps everyone's names in the page while the **People panel is open**. The extension tries to open it automatically when you click **Start monitoring**; if the toolbar was collapsed, it may not find the button — open the People panel manually and keep it open.
+- Google Meet frequently changes its internal DOM. If known participants go missing anyway, update the `NAME_SELECTORS` array at the top of `content.js`.
 - Participants who muted/joined late only appear once their tile is rendered — the panel updates every few seconds.
 
 **`Extension context invalidated` in the console**
