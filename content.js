@@ -28,6 +28,7 @@
     } else {
       students = [];
     }
+    rebuildIndex();
   }
 
   async function loadPresent() {
@@ -54,66 +55,12 @@
   }
 
   // ---------- participant extraction ----------
-  // Google Meet obfuscates class names; these are known heuristics.
-  const NAME_SELECTORS = ['[data-self-name]', '.oIy2qc', '.n8xkHc', '.Z9qxz'];
-
-  function cleanName(raw) {
-    return String(raw || '').replace(/\s+/g, ' ').trim();
-  }
+  // Delegates to core.js, which is shareable with the automated test suite.
+  const C = window.MeetAttendanceCore || null;
 
   function collectParticipantNames() {
-    const found = new Set();
-
-    document.querySelectorAll('[data-participant-id]').forEach((tile) => {
-      let raw = null;
-      for (const sel of NAME_SELECTORS) {
-        const el = tile.querySelector(sel);
-        if (el && cleanName(el.textContent)) {
-          raw = el.textContent;
-          break;
-        }
-      }
-      if (!raw) {
-        const aria = tile.querySelector('[aria-label]');
-        raw = aria ? aria.getAttribute('aria-label') : tile.getAttribute('aria-label');
-      }
-      if (!raw) raw = tile.textContent;
-      const cleaned = cleanName(raw);
-      if (cleaned && cleaned.toLowerCase() !== 'you') found.add(cleaned);
-    });
-
-    // Broad fallback: find any leaf element whose text equals a student name.
-    // This catches names Meet renders in containers we don't know about.
-    if (students.length) {
-      const names = new Set(students.map((s) => normalize(s)));
-      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT, {
-        acceptNode: (el) =>
-          el.children.length === 0 && cleanName(el.textContent) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP,
-      });
-      let node;
-      while ((node = walker.nextNode())) {
-        const text = cleanName(node.textContent);
-        if (text && names.has(normalize(text))) found.add(text);
-      }
-    }
-
-    return found;
-  }
-
-  function normalize(name) {
-    return name
-      .toLowerCase()
-      .replace(/[^a-z0-9 ]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-  }
-
-  function matchStudent(participantName) {
-    const p = normalize(participantName);
-    return students.find((s) => {
-      const sn = normalize(s);
-      return p && sn && (p === sn || p.includes(sn) || sn.includes(p));
-    });
+    if (C) return C.collectParticipantNames(document, students);
+    return new Set();
   }
 
   // ---------- scan logic ----------
@@ -133,8 +80,9 @@
     scrollParticipantsPanel();
   }
 
-  // Scroll Meet's People panel so lazy-rendered/virtualized participant
-  // rows lower down the list still get created (and thus counted).
+  // Progressively scroll Meet's People panel so lazy-rendered/virtualized
+  // participant rows get created step-by-step down the whole list (and thus
+  // counted). Every other scan resets to the top to re-trigger rendering.
   let scrollTick = 0;
   function scrollParticipantsPanel() {
     const row = document.querySelector('[data-participant-id]');
@@ -146,8 +94,14 @@
         (st.overflowY === 'auto' || st.overflowY === 'scroll' || st.overflowY === 'overlay') &&
         el.scrollHeight > el.clientHeight + 5
       ) {
+        const max = el.scrollHeight - el.clientHeight;
         scrollTick++;
-        el.scrollTop = scrollTick % 2 ? el.scrollHeight : 0;
+        if (scrollTick % 2 === 0) {
+          el.scrollTop = 0;
+        } else {
+          const step = Math.max(150, Math.round(max / 8));
+          el.scrollTop = Math.min(el.scrollTop + step, max);
+        }
         break;
       }
       el = el.parentElement;
@@ -236,33 +190,36 @@
   }
 
   // ---------- matching vs student list ----------
+  let index = null;
+  function rebuildIndex() {
+    index = C ? C.createIndex(students) : null;
+  }
+
+  function matchStudent(participantName) {
+    return C ? C.matchStudent(participantName, students, index) : null;
+  }
+
   function activeStudentsText() {
     return students.join('\n');
   }
 
   function applyStudents() {
     students = els.studentsBox.value.split('\n').map((s) => s.trim()).filter(Boolean);
+    rebuildIndex();
     saveStudents();
     render();
   }
 
   function presentNames() {
-    return students.filter((s) => present.has(s));
+    return C ? C.categorize(students, present, lastSeen, index).present : [];
   }
 
   function absentNames() {
-    const matchedPresent = new Set(students.filter((s) => present.has(s)));
-    return students.filter((s) => !matchedPresent.has(s));
+    return C ? C.categorize(students, present, lastSeen, index).absent : [];
   }
 
   function unknownNames() {
-    const known = new Set(students.map((s) => normalize(s)));
-    const mapped = new Set();
-    lastSeen.forEach((n) => {
-      const m = matchStudent(n);
-      if (m) mapped.add(normalize(m));
-    });
-    return lastSeen.filter((n) => !known.has(normalize(n)) && !mapped.has(normalize(n)));
+    return C ? C.categorize(students, present, lastSeen, index).unknown : [];
   }
 
   // ---------- export ----------

@@ -101,9 +101,28 @@ Or edit it at runtime from the extension popup (toolbar icon) or the in-meeting 
 
 ### Matching rules
 
-- Names are compared case-insensitively.
-- Punctuation is ignored.
-- A participant is matched if their name **contains** a student name or vice-versa, so minor display differences are tolerated.
+- Names are compared **case-insensitively** and punctuation is ignored.
+- Spaces are ignored too (so `Sh Aurya Singh` matches `SHAURYA SINGH`).
+- Pronouns/status words are stripped (`(You)`, `(He/Him)`, `presenting`).
+- Matching is **conservative**: only exact name matches count. First-name-only
+  or partial matches are rejected, so two students with the same first name
+  (e.g. two Shauryas) can never be falsely marked present.
+- When a tile's text contains a multi-word student name intact, that student
+  is recorded (handles `PARAS BHATT muted`-style tiles).
+
+## Automated tests
+
+The matching and extraction logic lives in `core.js` and is covered by a deep
+test suite that runs in plain Node (no dependencies):
+
+```bash
+node tests/run.js
+```
+
+It verifies format tolerance, false-positive protection (shared surnames,
+first-name ambiguity, typos), present/absent/unknown categorization,
+extraction from simulated Meet DOMs, and performance at high saturation
+(200k matches, 60-participant scans). Run it after any change to `core.js`.
 
 ---
 
@@ -127,10 +146,12 @@ Or edit it at runtime from the extension popup (toolbar icon) or the in-meeting 
 meet attendance/
 ├── manifest.json          # Chrome extension config (Manifest V3)
 ├── default-students.js    # Default roster (edit this)
+├── core.js                # Shared matching/extraction logic (also used by tests)
 ├── content.js             # Injects into meet.google.com — scans participants, shows panel
 ├── popup.html             # Toolbar popup UI
 ├── popup.js               # Popup logic for editing/saving the roster
 ├── install.ps1            # One-click Windows installer (downloads all files into a folder)
+├── tests/run.js           # Automated deep test suite (node tests/run.js)
 └── README.md              # This file
 ```
 
