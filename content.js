@@ -432,8 +432,8 @@
       <style>
         #meet-attendance-widget {
           position: fixed;
-          top: 16px;
-          right: 16px;
+          left: 16px;
+          bottom: 24px;
           z-index: 999999;
           width: 320px;
           max-height: 85vh;
@@ -457,6 +457,8 @@
           align-items: center;
           font-weight: 500;
           color: #1a73e8;
+          cursor: move;
+          user-select: none;
         }
         #meet-attendance-widget .ma-toggle {
           background: #1a73e8;
@@ -558,6 +560,8 @@
     els.absentList = host.querySelector('#ma-absent-list');
     els.unknownList = host.querySelector('#ma-unknown-list');
     els.status = host.querySelector('#ma-status');
+    els.header = host.querySelector('.ma-header');
+    makeDraggable(els.header);
 
     els.saveBtn.addEventListener('click', applyStudents);
     els.startBtn.addEventListener('click', start);
@@ -591,6 +595,29 @@
         }
       }
     }, true);
+  }
+
+  // Drag the panel by its header so it never blocks Meet's toolbar/People button.
+  function makeDraggable(header) {
+    let dragState = null;
+    header.addEventListener('mousedown', (e) => {
+      if (e.target.closest('button, textarea, a')) return;
+      const rect = host.getBoundingClientRect();
+      dragState = { dx: e.clientX - rect.left, dy: e.clientY - rect.top };
+      e.preventDefault();
+    });
+    document.addEventListener('mousemove', (e) => {
+      if (!dragState) return;
+      const left = Math.max(0, Math.min(window.innerWidth - host.offsetWidth, e.clientX - dragState.dx));
+      const top = Math.max(0, Math.min(window.innerHeight - host.offsetHeight, e.clientY - dragState.dy));
+      host.style.left = left + 'px';
+      host.style.top = top + 'px';
+      host.style.right = 'auto';
+      host.style.bottom = 'auto';
+    });
+    document.addEventListener('mouseup', () => {
+      dragState = null;
+    });
   }
 
   // ---------- detected list ----------

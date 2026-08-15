@@ -67,7 +67,7 @@ irm https://raw.githubusercontent.com/AkshayPant-19/meet-attendance/main/install
 
 1. (Optional) Edit the student list in `default-students.js` or via the extension popup.
 2. Open a Google Meet meeting — via a link, the calendar, or a fresh tab.
-3. Press **Ctrl+M** to open the **Meet Attendance** panel (top-right). Press **Ctrl+M** again to hide it.
+3. Press **Ctrl+M** to open the **Meet Attendance** panel (bottom-left by default). Press **Ctrl+M** again to hide it. Drag it by its title bar if you need it elsewhere.
 4. Check the student list is filled in (it is pre-filled from `default-students.js`). Edit if needed and click **Save list**.
 5. Click **Start monitoring**. The extension automatically opens Meet's **People panel** (and re-opens it every 5s if it gets closed) so all participants — including those beyond the main layout — are visible to the scanner. It then incrementally scrolls the panel so long rosters fully render. Present / Absent / Not-in-list counts update live.
 6. At the end of the meeting click **Export CSV** to download the attendance file.
