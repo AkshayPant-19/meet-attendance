@@ -3,6 +3,31 @@
 All notable changes to **Google Meet Attendance** are documented here.
 Format based on [Keep a Changelog](https://keepachangelog.com/); versioning follows [SemVer](https://semver.org/).
 
+## [1.3.0] — 2026-10-15
+
+Auto-sync that keeps updating the same session.
+
+### Added
+
+- **Auto-sync every 5 minutes** — while monitoring, the extension re-sends the
+  session every 5 minutes so the dashboard stays current during a long class.
+- **Same-session updates** — every sync for a given meeting carries a stable
+  `clientKey` (and the `sessionId` returned by the server), so repeated syncs
+  **update one session row** instead of creating duplicates. The website's
+  `POST /api/sync` now performs a create-or-update.
+- **Final sync on leave** — a last sync fires when you press **Stop**, navigate
+  away from the meeting, or close the tab (`pagehide`/`beforeunload`, with
+  `keepalive`), so the dashboard has the completed session.
+- **Auto-sync toggle** — a checkbox in the panel and the popup (on by default).
+- **Tests** — added sync-payload cases for `clientKey`/`sessionId`. Now
+  **42 checks / 0 failures**.
+
+### Changed
+
+- `buildSyncPayload()` now includes optional `clientKey`/`sessionId`.
+- Leaving the meeting (URL changes off the meeting room) automatically stops
+  monitoring and flushes the session.
+
 ## [1.2.0] — 2026-10-15
 
 Sync sessions to the web dashboard.

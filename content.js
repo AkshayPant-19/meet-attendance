@@ -8,6 +8,9 @@
   const SYNC_URL_KEY = 'meet_attendance_sync_url';
   const SYNC_TOKEN_KEY = 'meet_attendance_sync_token';
   const SYNC_COUNT_KEY = 'meet_attendance_sync_count';
+  const SYNC_AUTO_KEY = 'meet_attendance_sync_auto';
+  const SYNC_CURRENT_KEY = 'meet_attendance_sync_current';
+  const AUTO_SYNC_MS = 300000;
 
   if (window.__meetAttendanceLoaded) return;
   window.__meetAttendanceLoaded = true;
@@ -22,8 +25,14 @@
   let ensureTimer = null;
   let scrollTimer = null;
   let logTimer = null;
+  let leaveTimer = null;
   let lastSeen = [];
   let theme = 'light';
+  let autoSyncEnabled = true;
+  let autoSyncTimer = null;
+  let syncing = false;
+  let sessionRef = { clientKey: null, sessionId: null };
+  let activeMeetingCode = '';
 
   const els = {};
 
@@ -361,6 +370,7 @@
 
   function start() {
     monitoring = true;
+    activeMeetingCode = meetingCode();
     // If the stored records belong to a different meeting, start clean.
     chromeGet(MEETING_KEY).then((data) => {
       const prev = data[MEETING_KEY];
@@ -393,7 +403,10 @@
     ensureTimer = setInterval(ensurePeoplePanel, 5000);
     scrollTimer = setInterval(scrollAndRecord, 650);
     logTimer = setInterval(snapshotMinute, 300000);
+    leaveTimer = setInterval(checkLeftMeeting, 3000);
     snapshotMinute();
+    // Resolve the (stable) session id, then start auto-syncing every 5 min.
+    ensureSessionRef().then(startAutoSync);
     els.startBtn.disabled = true;
     els.stopBtn.disabled = false;
     if (els.header) els.header.classList.add('ma-live');
@@ -406,8 +419,9 @@
     });
   }
 
-  function stop() {
+  function stop(skipFinalSync) {
     monitoring = false;
+    stopAutoSync();
     const now = Date.now();
     present.forEach((name) => {
       if (records[name]) records[name].leave = now;
@@ -434,14 +448,21 @@
       clearInterval(logTimer);
       logTimer = null;
     }
+    if (leaveTimer) {
+      clearInterval(leaveTimer);
+      leaveTimer = null;
+    }
     els.startBtn.disabled = false;
     els.stopBtn.disabled = true;
     if (els.header) els.header.classList.remove('ma-live');
     els.status.textContent = 'Stopped';
+    // Final sync so the dashboard has the complete session (unless resetting).
+    if (!skipFinalSync) flushSync();
   }
 
   function resetSession() {
-    stop();
+    stop(true);
+    clearSessionRef();
     present.clear();
     records = {};
     minuteLog = [];
@@ -617,6 +638,13 @@
   }
 
   // ---------- sync to the web dashboard ----------
+  function newClientKey() {
+    try {
+      if (window.crypto && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+    } catch (e) {}
+    return 'ma-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+  }
+
   function buildPayload() {
     if (!C || !C.buildSyncPayload) return null;
     return C.buildSyncPayload({
@@ -626,7 +654,41 @@
       title: document.title || (PLATFORM.label + ' session'),
       platform: PLATFORM_ID,
       meetingCode: meetingCode(),
+      clientKey: sessionRef.clientKey || undefined,
+      sessionId: sessionRef.sessionId || undefined,
     });
+  }
+
+  // A stable id per meeting so every sync updates the SAME server row instead
+  // of creating a new session every few minutes.
+  async function ensureSessionRef() {
+    const code = meetingCode();
+    const data = await chromeGet(SYNC_CURRENT_KEY);
+    const cur = data[SYNC_CURRENT_KEY];
+    if (cur && cur.clientKey && cur.meetingCode === code) {
+      sessionRef = { clientKey: cur.clientKey, sessionId: cur.sessionId || null };
+    } else {
+      sessionRef = { clientKey: newClientKey(), sessionId: null };
+      saveSessionRef();
+    }
+    return sessionRef;
+  }
+
+  function saveSessionRef() {
+    try {
+      chrome.storage.local.set({
+        [SYNC_CURRENT_KEY]: {
+          meetingCode: meetingCode(),
+          clientKey: sessionRef.clientKey,
+          sessionId: sessionRef.sessionId,
+        },
+      });
+    } catch (e) {}
+  }
+
+  function clearSessionRef() {
+    sessionRef = { clientKey: null, sessionId: null };
+    try { chrome.storage.local.remove(SYNC_CURRENT_KEY); } catch (e) {}
   }
 
   async function getSyncSettings() {
@@ -642,6 +704,11 @@
     return data[SYNC_COUNT_KEY] || { synced: 0, lastAt: null, lastSessionId: null };
   }
 
+  async function loadAutoSync() {
+    const data = await chromeGet(SYNC_AUTO_KEY);
+    autoSyncEnabled = data[SYNC_AUTO_KEY] !== false;
+  }
+
   function setStatus(msg) {
     if (els.status) els.status.textContent = msg;
   }
@@ -654,23 +721,52 @@
       return;
     }
     const c = await getSyncCount();
-    els.syncHint.textContent = 'Connected to ' + url + (c.synced ? ' · ' + c.synced + ' synced' : '');
+    els.syncHint.textContent =
+      'Connected to ' + url +
+      (autoSyncEnabled ? ' · auto-sync every 5 min' : '') +
+      (c.synced ? ' · ' + c.synced + ' syncs' : '');
   }
 
-  async function syncSession() {
+  function startAutoSync() {
+    stopAutoSync();
+    if (!autoSyncEnabled) return;
+    autoSyncTimer = setInterval(() => {
+      if (monitoring) syncSession({ auto: true, silent: true });
+    }, AUTO_SYNC_MS);
+  }
+
+  function stopAutoSync() {
+    if (autoSyncTimer) {
+      clearInterval(autoSyncTimer);
+      autoSyncTimer = null;
+    }
+  }
+
+  /**
+   * Sync the current session.
+   *   opts.auto      – periodic/leave sync (updates the same session)
+   *   opts.keepalive – allow the request to finish as the page unloads
+   *   opts.silent    – don't flash a busy status message
+   */
+  async function syncSession(opts) {
+    opts = opts || {};
     const { url, token } = await getSyncSettings();
     if (!url || !token) {
-      setStatus('Set the server URL and API token in the extension popup, then try again.');
+      if (!opts.silent) setStatus('Set the server URL and API token in the extension popup, then try again.');
       return;
     }
+    if (syncing) return;
+
+    await ensureSessionRef();
     const payload = buildPayload();
     if (!payload || !payload.students.length) {
-      setStatus('Nothing to sync — add a student list first.');
+      if (!opts.silent) setStatus('Nothing to sync — add a student list first.');
       return;
     }
 
+    syncing = true;
     if (els.syncBtn) els.syncBtn.disabled = true;
-    setStatus('Syncing ' + payload.students.length + ' students…');
+    if (!opts.silent) setStatus('Syncing ' + payload.students.length + ' students…');
     try {
       const res = await fetch(url + '/api/sync', {
         method: 'POST',
@@ -679,29 +775,50 @@
           Authorization: 'Bearer ' + token,
         },
         body: JSON.stringify(payload),
+        keepalive: !!opts.keepalive,
       });
       const body = await res.json().catch(() => ({}));
       if (res.ok) {
+        if (body && body.sessionId) {
+          sessionRef.sessionId = body.sessionId;
+          saveSessionRef();
+        }
         const c = await getSyncCount();
-        const count = (c.synced || 0) + 1;
         try {
           chrome.storage.local.set({
-            [SYNC_COUNT_KEY]: { synced: count, lastAt: Date.now(), lastSessionId: body.sessionId || null },
+            [SYNC_COUNT_KEY]: {
+              synced: (c.synced || 0) + 1,
+              lastAt: Date.now(),
+              lastSessionId: (body && body.sessionId) || null,
+            },
           });
         } catch (e) {}
         setStatus(
-          'Synced ' + payload.students.length + ' students' +
+          (opts.auto ? 'Auto-synced ' : 'Synced ') + payload.students.length + ' students' +
             (body.sessionId ? ' (session ' + String(body.sessionId).slice(0, 8) + ')' : '') + '.',
         );
         updateSyncHint();
-      } else {
+      } else if (!opts.auto) {
         setStatus('Sync failed (' + res.status + '): ' + (body.error || 'unknown error'));
       }
     } catch (e) {
-      setStatus('Sync failed: ' + (e && e.message ? e.message : e) + ' — check the server URL.');
+      if (!opts.auto) setStatus('Sync failed: ' + (e && e.message ? e.message : e) + ' — check the server URL.');
     } finally {
+      syncing = false;
       if (els.syncBtn) els.syncBtn.disabled = false;
     }
+  }
+
+  // Final sync when the user leaves / closes the meeting tab.
+  function flushSync() {
+    if (!records || !Object.keys(records).length) return;
+    syncSession({ auto: true, silent: true, keepalive: true });
+  }
+
+  // Leaving the meeting changes the URL away from the meeting room id.
+  function checkLeftMeeting() {
+    if (!monitoring) return;
+    if (meetingCode() !== activeMeetingCode) stop();
   }
 
   // ---------- UI ----------
@@ -966,6 +1083,11 @@
         #meet-attendance-widget .ma-row button.ma-danger:hover { background: var(--ma-danger-hover); border-color: var(--ma-danger-hover); }
         #meet-attendance-widget .ma-status { margin-top: 12px; font-size: 12px; color: var(--ma-muted); }
         #meet-attendance-widget .ma-sync-hint { margin-top: 8px; font-size: 11px; color: var(--ma-muted); word-break: break-all; }
+        #meet-attendance-widget .ma-check {
+          display: flex; align-items: center; gap: 7px;
+          margin-top: 8px; font-size: 12px; color: var(--ma-muted); cursor: pointer; user-select: none;
+        }
+        #meet-attendance-widget .ma-check input { width: auto; margin: 0; accent-color: var(--ma-primary); }
       </style>
       <div class="ma-header" id="ma-header">
         <span class="ma-title"><span class="ma-dot"></span><span id="ma-app-title">Meet Attendance</span></span>
@@ -1005,6 +1127,7 @@
         <div class="ma-row">
           <button class="ma-primary" id="ma-sync">Sync to server</button>
         </div>
+        <label class="ma-check"><input type="checkbox" id="ma-autosync" checked /> Auto-sync every 5 minutes</label>
         <div class="ma-sync-hint" id="ma-sync-hint"></div>
         <div class="ma-row">
           <button id="ma-defaults">Use default list</button>
@@ -1064,9 +1187,18 @@
     els.debugBtn = host.querySelector('#ma-debug');
     els.syncBtn = host.querySelector('#ma-sync');
     els.syncHint = host.querySelector('#ma-sync-hint');
+    els.autoChk = host.querySelector('#ma-autosync');
     els.defaultsBtn.addEventListener('click', useDefaultList);
     els.debugBtn.addEventListener('click', copyDebugReport);
-    els.syncBtn.addEventListener('click', syncSession);
+    els.syncBtn.addEventListener('click', () => syncSession());
+
+    els.autoChk.checked = autoSyncEnabled;
+    els.autoChk.addEventListener('change', () => {
+      autoSyncEnabled = els.autoChk.checked;
+      try { chrome.storage.local.set({ [SYNC_AUTO_KEY]: autoSyncEnabled }); } catch (e) {}
+      if (monitoring) startAutoSync(); else stopAutoSync();
+      updateSyncHint();
+    });
 
     let open = true;
     const toggle = () => {
@@ -1131,12 +1263,15 @@
   async function boot() {
     console.log('[Meet Attendance] content script loaded on', location.href, '— platform:', PLATFORM_ID);
     window.__meetAttendanceDebug = buildDebugReport;
-    await loadTheme();
+    await Promise.all([loadTheme(), loadAutoSync()]);
     buildWidget();
     await Promise.all([loadStudents(), loadPresent(), loadRecords(), loadLog()]);
     els.studentsBox.value = activeStudentsText();
     render();
     updateSyncHint();
+    // Flush any pending session when the user leaves / closes the meeting tab.
+    window.addEventListener('pagehide', flushSync);
+    window.addEventListener('beforeunload', flushSync);
     console.log('[Meet Attendance] widget built, press Ctrl+M to show it');
   }
 

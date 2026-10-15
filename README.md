@@ -52,7 +52,7 @@ irm https://raw.githubusercontent.com/AkshayPant-19/meet-attendance/main/install
 - **Timestamps** — records each student's **join** and **leave** time, plus an attendance log every **5 minutes** (with who left/joined and whether attendance stayed consistent), shown in the panel and included in the CSV export.
 - **CSV export** — download `meeting_attendance.csv` at the end of class.
 - **Session reset** — start a clean attendance record for the next meeting.
-- **Sync to the web dashboard (optional)** — set a server URL + API token in the popup, then press **Sync to server** to push the session to your account.
+- **Sync to the web dashboard (optional)** — set a server URL + API token in the popup, then press **Sync to server** to push the session to your account. With auto-sync on (default) it pushes **every 5 minutes** and on leave, always updating the **same** session.
 
 ## Table of Contents
 

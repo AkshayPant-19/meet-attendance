@@ -378,6 +378,8 @@
       records: recs,
     };
     if (opts.meetingCode) payload.meetingCode = opts.meetingCode;
+    if (opts.clientKey) payload.clientKey = opts.clientKey;
+    if (opts.sessionId) payload.sessionId = opts.sessionId;
     if (startedAt !== null) payload.startedAt = startedAt;
     if (endedAt !== null) payload.endedAt = endedAt;
     return payload;

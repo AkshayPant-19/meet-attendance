@@ -134,6 +134,12 @@ dashboard.
 > The popup shows a **Connected** hint once the URL + token are set. Sync only
 > sends your roster, join/leave times and status — to your own server.
 
+**Auto-sync (on by default).** While you're monitoring, the extension pushes the
+session to the server **every 5 minutes** and again when you press **Stop**, leave
+the meeting, or close the tab. All of these keep updating the **same** session on
+the dashboard — you won't get a new row each time. Turn it off with the
+**Auto-sync every 5 minutes** checkbox in the panel (or the popup).
+
 ---
 
 ## Controls

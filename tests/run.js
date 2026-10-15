@@ -551,6 +551,24 @@ test('buildSyncPayload is JSON-safe (no Set leaks) and round-trips', () => {
   assert.strictEqual(clone.records.A.status, 'present');
 });
 
+test('buildSyncPayload carries clientKey and sessionId for same-session updates', () => {
+  const p = core.buildSyncPayload({
+    students: ['A'],
+    present: ['A'],
+    records: {},
+    clientKey: 'ck-123',
+    sessionId: 'sess-456',
+  });
+  assert.strictEqual(p.clientKey, 'ck-123');
+  assert.strictEqual(p.sessionId, 'sess-456');
+});
+
+test('buildSyncPayload omits clientKey/sessionId when absent', () => {
+  const p = core.buildSyncPayload({ students: ['A'], present: [], records: {} });
+  assert.ok(!('clientKey' in p));
+  assert.ok(!('sessionId' in p));
+});
+
 // ============================================================
 console.log('\n----------------------------------------');
 console.log('Result: ' + pass + ' passed, ' + fail + ' failed');
