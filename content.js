@@ -4,6 +4,7 @@
   const RECORDS_KEY = 'meet_attendance_records';
   const LOG_KEY = 'meet_attendance_log';
   const MEETING_KEY = 'meet_attendance_meeting';
+  const THEME_KEY = 'meet_attendance_theme';
 
   if (window.__meetAttendanceLoaded) return;
   window.__meetAttendanceLoaded = true;
@@ -19,6 +20,7 @@
   let scrollTimer = null;
   let logTimer = null;
   let lastSeen = [];
+  let theme = 'light';
 
   const els = {};
 
@@ -51,6 +53,11 @@
   async function loadLog() {
     const data = await chromeGet(LOG_KEY);
     minuteLog = Array.isArray(data[LOG_KEY]) ? data[LOG_KEY] : [];
+  }
+
+  async function loadTheme() {
+    const data = await chromeGet(THEME_KEY);
+    if (data[THEME_KEY] === 'dark' || data[THEME_KEY] === 'light') theme = data[THEME_KEY];
   }
 
   function meetingCode() {
@@ -87,8 +94,16 @@
   // Delegates to core.js, which is shareable with the automated test suite.
   const C = window.MeetAttendanceCore || null;
 
+  // Which web-meeting app we're running inside (meet, zoom, teams, webex,
+  // whereby or generic). Drives participant selectors and panel detection.
+  const PLATFORM_ID = C ? C.detectPlatform(location) : 'meet';
+  const PLATFORM = C ? C.resolvePlatform(PLATFORM_ID) : { id: 'meet', label: 'Google Meet', tileSelector: '[data-participant-id]', rowSelector: '[role="listitem"]', peopleWords: ['people', 'participant'] };
+  const ROW_SELECTOR = PLATFORM.rowSelector || '[role="listitem"]';
+  const TILE_SELECTOR = PLATFORM.tileSelector || '[data-participant-id]';
+  const PARTICIPANT_SELECTOR = TILE_SELECTOR + ', ' + ROW_SELECTOR + ', [role="list"]';
+
   function collectParticipantNames() {
-    if (C) return C.collectParticipantNames(document, students);
+    if (C) return C.collectParticipantNames(document, students, PLATFORM);
     return new Set();
   }
 
@@ -166,7 +181,7 @@
     };
     const header = findPanelHeader();
     if (header) addScrollers(header);
-    document.querySelectorAll('[data-participant-id], [role="listitem"], [role="list"]').forEach(addScrollers);
+    document.querySelectorAll(TILE_SELECTOR + ', ' + ROW_SELECTOR + ', [role="list"]').forEach(addScrollers);
     scrollers.forEach(scrollOne);
   }
 
@@ -195,7 +210,15 @@
   };
 
   function findPeopleButton() {
+    const words = PLATFORM.peopleWords || ['people', 'participant'];
+    const generic = [];
+    words.forEach((w) => {
+      generic.push('[aria-label*="' + w + '" i]');
+      generic.push('[data-tooltip*="' + w + '" i]');
+      generic.push('[title*="' + w + '" i]');
+    });
     const selectors = [
+      ...generic,
       '[aria-label*="people" i]',
       '[aria-label*="participant" i]',
       '[data-tooltip*="people" i]',
@@ -228,7 +251,7 @@
 // "People (38)", "In this call: 3 people". Meet splits text across child
   // spans, so compare with spaces removed ("38participants", "people38").
   function findPanelHeader() {
-    const re = /^(people|participants?|attendees?)(\d+)?$|^\d+(people|participants?|attendees?)$/i;
+    const re = /^(people|participants?|attendees?|roster|members?)(\d+)?$|^\d+(people|participants?|attendees?|members?)$|^(in this (call|meeting|meet):?\s*\d+)/i;
     const compact = (s) => String(s).replace(/[^0-9a-z]/gi, '').toLowerCase();
     const nodes = Array.from(document.querySelectorAll('[aria-label], div, span')).filter((el) => {
       const t = (el.textContent || '').trim();
@@ -250,6 +273,8 @@
     // The participant list renders rows as role="listitem" with a participant
     // id; grid tiles never do, so this reliably means the drawer is open.
     if (document.querySelector('[role="listitem"][data-participant-id], [role="list"] [data-participant-id]')) return true;
+    // Non-Meet platforms: any roster row or tile the platform defines counts.
+    if (PLATFORM.id !== 'meet' && document.querySelector(ROW_SELECTOR)) return true;
     return !!findPanelHeader();
   }
 
@@ -354,8 +379,8 @@
         if (m.type !== 'childList') return false;
         return [].concat(Array.from(m.addedNodes), Array.from(m.removedNodes)).some((n) => {
           if (n.nodeType !== 1) return false;
-          if (n.matches && n.matches('[data-participant-id], [role="listitem"], [role="list"]')) return true;
-          if (n.querySelector && n.querySelector('[data-participant-id], [role="listitem"], [role="list"]')) return true;
+          if (n.matches && n.matches(PARTICIPANT_SELECTOR)) return true;
+          if (n.querySelector && n.querySelector(PARTICIPANT_SELECTOR)) return true;
           return false;
         });
       });
@@ -463,15 +488,17 @@
   function buildDebugReport() {
     const lines = [];
     lines.push('URL: ' + location.href);
+    lines.push('Platform: ' + PLATFORM.label + ' (' + PLATFORM_ID + ')');
     lines.push('Students loaded: ' + students.length);
     lines.push('Monitoring: ' + monitoring);
     lines.push('People button found: ' + (findPeopleButton() ? 'yes' : 'no'));
     lines.push('People panel open (header detected): ' + (isPeoplePanelOpen() ? 'yes' : 'no'));
     lines.push('More-options button found: ' + (Array.from(document.querySelectorAll('[role="button"], button')).some((el) => labelMatch(el, ['more options', 'more actions'])) ? 'yes' : 'no'));
     lines.push('Overflow "+N" chip found: ' + (findOverflowChip() ? 'yes' : 'no'));
-    lines.push('[data-participant-id] count: ' + document.querySelectorAll('[data-participant-id]').length);
+    lines.push('Participant tiles (' + TILE_SELECTOR + '): ' + document.querySelectorAll(TILE_SELECTOR).length);
+    lines.push('Roster rows (' + ROW_SELECTOR + '): ' + document.querySelectorAll(ROW_SELECTOR).length);
     const scrollables = [];
-    document.querySelectorAll('[data-participant-id]').forEach((row) => {
+    document.querySelectorAll(TILE_SELECTOR + ', ' + ROW_SELECTOR).forEach((row) => {
       let cur = row.parentElement;
       while (cur && cur !== document.body) {
         const st = getComputedStyle(cur);
@@ -523,10 +550,6 @@
 
   function absentNames() {
     return C ? C.categorize(students, present, lastSeen, index).absent : [];
-  }
-
-  function unknownNames() {
-    return C ? C.categorize(students, present, lastSeen, index).unknown : [];
   }
 
   // ---------- export ----------
@@ -619,16 +642,13 @@
   function render() {
     const presentList = presentNames();
     const absentList = absentNames();
-    const unknown = unknownNames();
 
     els.presentCount.textContent = presentList.length;
     els.absentCount.textContent = absentList.length;
-    els.unknownCount.textContent = unknown.length;
     els.detectedCount.textContent = lastSeen.length;
 
     setList(els.presentList, presentList, 'present');
     setList(els.absentList, absentList, 'absent');
-    setList(els.unknownList, unknown, 'unknown');
 
     const recent = minuteLog.slice(-5);
     els.logList.textContent = recent.length
@@ -648,38 +668,81 @@
     host.innerHTML = `
       <style>
         #meet-attendance-widget {
+          --ma-bg: #ffffff;
+          --ma-fg: #0f172a;
+          --ma-header-bg: #f8fafc;
+          --ma-header-fg: #1e293b;
+          --ma-border: #e2e8f0;
+          --ma-border-soft: #eef2f6;
+          --ma-muted: #64748b;
+          --ma-input-border: #cbd5e1;
+          --ma-hover: #f1f5f9;
+          --ma-log-bg: #f8fafc;
+          --ma-log-fg: #475569;
+          --ma-btn-bg: #ffffff;
+          --ma-btn-fg: #334155;
+          --ma-primary: #2563eb;
+          --ma-primary-hover: #1d4ed8;
+          --ma-danger: #dc2626;
+          --ma-danger-hover: #b91c1c;
+          --ma-present: #16a34a;
+          --ma-absent: #dc2626;
+          --ma-shadow: rgba(15, 23, 42, .18);
           position: fixed;
           left: 16px;
           bottom: 24px;
           z-index: 999999;
           width: 340px;
           max-height: 86vh;
-          background: #ffffff;
-          border: 1px solid #e2e8f0;
+          background: var(--ma-bg);
+          border: 1px solid var(--ma-border);
           border-radius: 16px;
-          box-shadow: 0 12px 40px rgba(15, 23, 42, .18);
+          box-shadow: 0 12px 40px var(--ma-shadow);
           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
           font-size: 13px;
-          color: #0f172a;
+          color: var(--ma-fg);
           display: flex;
           flex-direction: column;
           box-sizing: border-box;
           overflow: hidden;
         }
+        #meet-attendance-widget[data-theme="dark"] {
+          --ma-bg: #0f172a;
+          --ma-fg: #e2e8f0;
+          --ma-header-bg: #1e293b;
+          --ma-header-fg: #f1f5f9;
+          --ma-border: #334155;
+          --ma-border-soft: #1e293b;
+          --ma-muted: #94a3b8;
+          --ma-input-border: #475569;
+          --ma-hover: #1e293b;
+          --ma-log-bg: #111c2e;
+          --ma-log-fg: #cbd5e1;
+          --ma-btn-bg: #1e293b;
+          --ma-btn-fg: #e2e8f0;
+          --ma-primary: #3b82f6;
+          --ma-primary-hover: #2563eb;
+          --ma-danger: #ef4444;
+          --ma-danger-hover: #dc2626;
+          --ma-present: #22c55e;
+          --ma-absent: #ef4444;
+          --ma-shadow: rgba(0, 0, 0, .5);
+        }
         #meet-attendance-widget * { box-sizing: border-box; }
         #meet-attendance-widget .ma-header {
           padding: 12px 14px;
-          border-bottom: 1px solid #eef2f6;
+          border-bottom: 1px solid var(--ma-border-soft);
           display: flex;
           justify-content: space-between;
           align-items: center;
           font-weight: 600;
-          color: #1e293b;
+          color: var(--ma-header-fg);
           cursor: move;
           user-select: none;
-          background: #f8fafc;
+          background: var(--ma-header-bg);
         }
         #meet-attendance-widget .ma-title { display: flex; align-items: center; gap: 8px; }
+        #meet-attendance-widget .ma-actions { display: flex; align-items: center; gap: 6px; }
         #meet-attendance-widget .ma-dot {
           width: 8px; height: 8px; border-radius: 50%; background: #94a3b8;
           transition: background .2s ease, box-shadow .2s ease;
@@ -688,8 +751,8 @@
           background: #22c55e; box-shadow: 0 0 0 3px rgba(34, 197, 94, .18);
         }
         #meet-attendance-widget .ma-toggle {
-          background: #0f172a;
-          color: #fff;
+          background: var(--ma-fg);
+          color: var(--ma-bg);
           border: none;
           border-radius: 8px;
           padding: 6px 12px;
@@ -697,49 +760,61 @@
           font-size: 12px;
           font-weight: 600;
         }
-        #meet-attendance-widget .ma-toggle:hover { background: #1e293b; }
+        #meet-attendance-widget .ma-theme {
+          background: transparent;
+          color: var(--ma-header-fg);
+          border: 1px solid var(--ma-border);
+          border-radius: 8px;
+          padding: 5px 9px;
+          cursor: pointer;
+          font-size: 12px;
+          font-weight: 600;
+          line-height: 1;
+        }
+        #meet-attendance-widget .ma-theme:hover { background: var(--ma-hover); }
         #meet-attendance-widget .ma-body { padding: 12px 14px; overflow-y: auto; }
         #meet-attendance-widget .ma-label {
           font-weight: 600;
           font-size: 11px;
           text-transform: uppercase;
           letter-spacing: .05em;
-          color: #64748b;
+          color: var(--ma-muted);
           margin: 14px 0 6px;
         }
         #meet-attendance-widget .ma-label:first-child { margin-top: 2px; }
         #meet-attendance-widget textarea {
           width: 100%;
           height: 70px;
-          border: 1px solid #cbd5e1;
+          border: 1px solid var(--ma-input-border);
           border-radius: 10px;
           padding: 8px;
           font-size: 12px;
           font-family: inherit;
           resize: vertical;
           outline: none;
+          background: var(--ma-bg);
+          color: var(--ma-fg);
         }
         #meet-attendance-widget textarea:focus {
-          border-color: #2563eb;
+          border-color: var(--ma-primary);
           box-shadow: 0 0 0 3px rgba(37, 99, 235, .12);
         }
         #meet-attendance-widget .ma-stats { display: flex; gap: 8px; margin: 12px 0 2px; }
         #meet-attendance-widget .ma-stat {
           flex: 1;
-          background: #fff;
-          border: 1px solid #e2e8f0;
+          background: var(--ma-btn-bg);
+          border: 1px solid var(--ma-border);
           border-radius: 12px;
           padding: 8px 4px;
           text-align: center;
           font-size: 11px;
-          color: #64748b;
+          color: var(--ma-muted);
         }
         #meet-attendance-widget .ma-stat b { display: block; font-size: 20px; font-weight: 700; }
-        #meet-attendance-widget .ma-stat.ma-present b { color: #16a34a; }
-        #meet-attendance-widget .ma-stat.ma-absent b { color: #dc2626; }
-        #meet-attendance-widget .ma-stat.ma-unknown b { color: #64748b; }
+        #meet-attendance-widget .ma-stat.ma-present b { color: var(--ma-present); }
+        #meet-attendance-widget .ma-stat.ma-absent b { color: var(--ma-absent); }
         #meet-attendance-widget .ma-section {
-          border-top: 1px solid #eef2f6;
+          border-top: 1px solid var(--ma-border-soft);
           padding-top: 2px;
           margin-top: 10px;
         }
@@ -755,55 +830,57 @@
           padding: 5px 9px;
           border-radius: 8px;
           font-size: 12.5px;
-          color: #1e293b;
+          color: var(--ma-header-fg);
           transition: background .12s ease;
         }
-        #meet-attendance-widget .ma-item:hover { background: #f1f5f9; }
+        #meet-attendance-widget .ma-item:hover { background: var(--ma-hover); }
         #meet-attendance-widget .ma-item-dot {
           width: 8px;
           height: 8px;
           border-radius: 50%;
           flex: none;
         }
-        #meet-attendance-widget .ma-item-present .ma-item-dot { background: #16a34a; }
-        #meet-attendance-widget .ma-item-absent .ma-item-dot { background: #dc2626; }
-        #meet-attendance-widget .ma-item-unknown .ma-item-dot { background: #94a3b8; }
-        #meet-attendance-widget .ma-item-detected .ma-item-dot { background: #2563eb; }
-        #meet-attendance-widget .ma-item-present .ma-item-time { color: #16a34a; font-weight: 600; margin-left: auto; }
-        #meet-attendance-widget .ma-item-time { font-size: 11px; color: #64748b; margin-left: auto; flex: none; }
+        #meet-attendance-widget .ma-item-present .ma-item-dot { background: var(--ma-present); }
+        #meet-attendance-widget .ma-item-absent .ma-item-dot { background: var(--ma-absent); }
+        #meet-attendance-widget .ma-item-detected .ma-item-dot { background: var(--ma-primary); }
+        #meet-attendance-widget .ma-item-present .ma-item-time { color: var(--ma-present); font-weight: 600; margin-left: auto; }
+        #meet-attendance-widget .ma-item-time { font-size: 11px; color: var(--ma-muted); margin-left: auto; flex: none; }
         #meet-attendance-widget .ma-log {
-          background: #f8fafc;
-          border: 1px solid #eef2f6;
+          background: var(--ma-log-bg);
+          border: 1px solid var(--ma-border-soft);
           border-radius: 10px;
           padding: 8px 10px;
           font-size: 11px;
-          color: #475569;
+          color: var(--ma-log-fg);
           line-height: 1.6;
           white-space: pre-wrap;
         }
         #meet-attendance-widget .ma-row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
         #meet-attendance-widget .ma-row button {
-          border: 1px solid #cbd5e1;
-          background: #fff;
+          border: 1px solid var(--ma-input-border);
+          background: var(--ma-btn-bg);
           border-radius: 10px;
           padding: 7px 12px;
           cursor: pointer;
           font-size: 12px;
           font-weight: 600;
-          color: #334155;
+          color: var(--ma-btn-fg);
           transition: background .15s ease, border-color .15s ease;
         }
-        #meet-attendance-widget .ma-row button:hover { background: #f1f5f9; border-color: #94a3b8; }
+        #meet-attendance-widget .ma-row button:hover { background: var(--ma-hover); border-color: #94a3b8; }
         #meet-attendance-widget .ma-row button:disabled { opacity: .45; cursor: default; }
-        #meet-attendance-widget .ma-row button.ma-primary { background: #2563eb; border-color: #2563eb; color: #fff; }
-        #meet-attendance-widget .ma-row button.ma-primary:hover { background: #1d4ed8; border-color: #1d4ed8; }
-        #meet-attendance-widget .ma-row button.ma-danger { background: #dc2626; border-color: #dc2626; color: #fff; }
-        #meet-attendance-widget .ma-row button.ma-danger:hover { background: #b91c1c; border-color: #b91c1c; }
-        #meet-attendance-widget .ma-status { margin-top: 12px; font-size: 12px; color: #64748b; }
+        #meet-attendance-widget .ma-row button.ma-primary { background: var(--ma-primary); border-color: var(--ma-primary); color: #fff; }
+        #meet-attendance-widget .ma-row button.ma-primary:hover { background: var(--ma-primary-hover); border-color: var(--ma-primary-hover); }
+        #meet-attendance-widget .ma-row button.ma-danger { background: var(--ma-danger); border-color: var(--ma-danger); color: #fff; }
+        #meet-attendance-widget .ma-row button.ma-danger:hover { background: var(--ma-danger-hover); border-color: var(--ma-danger-hover); }
+        #meet-attendance-widget .ma-status { margin-top: 12px; font-size: 12px; color: var(--ma-muted); }
       </style>
       <div class="ma-header" id="ma-header">
-        <span class="ma-title"><span class="ma-dot"></span>Meet Attendance</span>
-        <button class="ma-toggle" id="ma-toggle">+ Open</button>
+        <span class="ma-title"><span class="ma-dot"></span><span id="ma-app-title">Meet Attendance</span></span>
+        <span class="ma-actions">
+          <button class="ma-theme" id="ma-theme" title="Switch dark / light theme">Dark</button>
+          <button class="ma-toggle" id="ma-toggle">+ Open</button>
+        </span>
       </div>
       <div class="ma-body" id="ma-body">
         <div class="ma-label">Student list (one per line)</div>
@@ -816,7 +893,6 @@
         <div class="ma-stats">
           <div class="ma-stat ma-present"><b id="ma-present">0</b>Present</div>
           <div class="ma-stat ma-absent"><b id="ma-absent">0</b>Absent</div>
-          <div class="ma-stat ma-unknown"><b id="ma-unknown">0</b>Not in list</div>
         </div>
         <div class="ma-section">
           <div class="ma-label">Detected (<span id="ma-detected">0</span>)</div>
@@ -825,8 +901,6 @@
           <div class="ma-list" id="ma-present-list"></div>
           <div class="ma-label">Absent</div>
           <div class="ma-list" id="ma-absent-list"></div>
-          <div class="ma-label">Detected but not in list</div>
-          <div class="ma-list" id="ma-unknown-list"></div>
         </div>
         <div class="ma-section">
           <div class="ma-label">Session log (every 5 min)</div>
@@ -858,16 +932,32 @@
     els.body = host.querySelector('#ma-body');
     els.presentCount = host.querySelector('#ma-present');
     els.absentCount = host.querySelector('#ma-absent');
-    els.unknownCount = host.querySelector('#ma-unknown');
     els.detectedCount = host.querySelector('#ma-detected');
     els.detectedList = host.querySelector('#ma-detected-list');
     els.presentList = host.querySelector('#ma-present-list');
     els.absentList = host.querySelector('#ma-absent-list');
-    els.unknownList = host.querySelector('#ma-unknown-list');
     els.logList = host.querySelector('#ma-log-list');
     els.status = host.querySelector('#ma-status');
     els.header = host.querySelector('.ma-header');
+    els.themeBtn = host.querySelector('#ma-theme');
+    els.appTitle = host.querySelector('#ma-app-title');
     makeDraggable(els.header);
+
+    if (els.appTitle) els.appTitle.textContent = (PLATFORM.label || 'Meeting') + ' Attendance';
+
+    function applyTheme(mode) {
+      const dark = mode === 'dark';
+      host.setAttribute('data-theme', dark ? 'dark' : 'light');
+      if (els.themeBtn) els.themeBtn.textContent = dark ? 'Light' : 'Dark';
+    }
+    function setTheme(mode) {
+      theme = mode === 'dark' ? 'dark' : 'light';
+      applyTheme(theme);
+      try { chrome.storage.local.set({ [THEME_KEY]: theme }); } catch (e) {}
+    }
+    els.themeBtn.addEventListener('click', () => setTheme(theme === 'dark' ? 'light' : 'dark'));
+    // Initial paint from the already-loaded preference.
+    applyTheme(theme);
 
     els.saveBtn.addEventListener('click', applyStudents);
     els.startBtn.addEventListener('click', start);
@@ -939,8 +1029,9 @@
   })();
 
   async function boot() {
-    console.log('[Meet Attendance] content script loaded on', location.href);
+    console.log('[Meet Attendance] content script loaded on', location.href, '— platform:', PLATFORM_ID);
     window.__meetAttendanceDebug = buildDebugReport;
+    await loadTheme();
     buildWidget();
     await Promise.all([loadStudents(), loadPresent(), loadRecords(), loadLog()]);
     els.studentsBox.value = activeStudentsText();

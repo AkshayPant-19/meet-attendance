@@ -1,12 +1,14 @@
-# Google Meet Attendance
+# Meet Attendance
 
-A Chrome extension that runs **inside** your Google Meet meeting, reads the live participant list, and automatically marks each student from your roster as **Present** or **Absent**.
+A Chrome extension that runs **inside** your online class (Google Meet, Zoom, Microsoft Teams, Cisco Webex, Whereby and more), reads the live participant list, and automatically marks each student from your roster as **Present** or **Absent**.
 
 ![Chrome Extension](https://img.shields.io/badge/chrome-extension-v3-brightgreen)
-![Platform](https://img.shields.io/badge/platform-Google%20Meet-blue)
+![Platform](https://img.shields.io/badge/platform-Meet%20%7C%20Zoom%20%7C%20Teams%20%7C%20Webex-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 > Works in your browser only. No participant data ever leaves your machine — the roster and attendance are stored in `chrome.storage.local`.
+
+> **Read [USAGE.md](USAGE.md) for a step-by-step how-to.** The key point: you must **open the app's Participants/People panel** yourself, or off-screen participants won't be detected.
 
 ---
 
@@ -36,7 +38,9 @@ irm https://raw.githubusercontent.com/AkshayPant-19/meet-attendance/main/install
 
 ## Features
 
-- **In-meeting panel** — a floating widget inside the Meet page; hidden until you summon it with **Ctrl+M**.
+- **Works across web-meeting apps** — Google Meet, Zoom (web), Microsoft Teams, Cisco Webex and Whereby, plus a generic fallback for other in-browser meeting tools.
+- **Dark / light theme** — toggle the panel between light and dark; the choice is remembered.
+- **In-meeting panel** — a floating widget inside the meeting page; hidden until you summon it with **Ctrl+M**.
 - **Live attendance** — present/absent counts update automatically while people join and leave.
 - **Reads the whole People panel** — participants beyond the on-screen grid are counted too. Open Meet's **People panel** yourself (see [Usage](#usage)); the extension reads from it and scrolls it so the full list renders.
 - **Custom roster** — paste your own student list, or edit the bundled default list.
@@ -63,19 +67,22 @@ irm https://raw.githubusercontent.com/AkshayPant-19/meet-attendance/main/install
 ## Requirements
 
 - Google Chrome (or a Chromium-based browser such as Edge or Brave)
+- A supported web-meeting app: Google Meet, Zoom (web client), Microsoft Teams (web), Cisco Webex (web) or Whereby
 - No other dependencies — the extension is plain JavaScript with zero libraries
 
 ---
 
 ## Usage
 
-1. (Optional) Edit the student list in `default-students.js` or via the extension popup.
-2. Open a Google Meet meeting — via a link, the calendar, or a fresh tab.
-3. Press **Ctrl+M** to open the **Meet Attendance** panel (bottom-left by default). Press **Ctrl+M** again to hide it. Drag it by its title bar if you need it elsewhere.
-4. Check the student list is filled in (it is pre-filled from `default-students.js`). Edit if needed and click **Save list**.
-> **Important:** open Meet's **People panel** yourself before/during monitoring (click the **People** icon, or **More options → People** if the toolbar is collapsed) and keep it open. The scanner reads participant names from that panel — off-grid students are only listed there. The extension will try to re-open it if it gets closed, but for reliable attendance open it manually.
+> Full walkthrough in [USAGE.md](USAGE.md). The steps below are for Google Meet; the flow is the same on Zoom, Teams and Webex — just open **that app's Participants panel** instead of Meet's People panel.
 
-5. Click **Start monitoring**. The extension verifies the **People panel** is open every 5s (via the toolbar button, the **More options → People** menu, or the **"+N" chip**), then **scrolls the panel step-by-step**, scanning right after every step, so the entire roster (including people beyond the video grid) is read and marked. Present / Absent / Not-in-list counts update live, and each student's **join time** is recorded on first detection.
+1. (Optional) Edit the student list in `default-students.js` or via the extension popup.
+2. Open a meeting (Google Meet, Zoom web, Microsoft Teams, Webex or Whereby) — via a link, the calendar, or a fresh tab.
+3. Press **Ctrl+M** to open the **Attendance** panel (bottom-left by default). Press **Ctrl+M** again to hide it. Drag it by its title bar if you need it elsewhere. Use the **Dark / Light** button in the header to switch theme.
+4. Check the student list is filled in (it is pre-filled from `default-students.js`). Edit if needed and click **Save list**.
+> **Important:** open the app's **Participants/People panel** yourself before/during monitoring (in Meet: the **People** icon, or **More options → People** if the toolbar is collapsed) and keep it open. The scanner reads participant names from that panel — off-grid students are only listed there. The extension will try to re-open it if it gets closed, but for reliable attendance open it manually.
+
+5. Click **Start monitoring**. The extension verifies the **People panel** is open every 5s (via the toolbar button, the **More options → People** menu, or the **"+N" chip**), then **scrolls the panel step-by-step**, scanning right after every step, so the entire roster (including people beyond the video grid) is read and marked. Present / Absent counts update live, and each student's **join time** is recorded on first detection.
 6. Monitoring takes an attendance **snapshot every 5 minutes**, noting who joined, who left, and whether the present list was **consistent** with the previous snapshot (visible in the panel's *Session log*). Press **Stop** to finalize each student's **leave time**.
 7. At the end of the meeting click **Export CSV** — it downloads the roster with **Join / Leave / Duration** columns, followed by the 5-minute log.
 
@@ -137,9 +144,10 @@ node tests/run.js
 It verifies format tolerance, false-positive protection (shared surnames,
 first-name ambiguity, typos), present/absent/unknown categorization,
 extraction from simulated Meet DOMs (including People-panel drawer rows and
-tooltip-garbage behaviour), a short-text guard against aggregator containers,
-and performance at high saturation (200k matches, 60-participant scans).
-Run it after any change to `core.js`. Current: 27 checks / 0 failures.
+tooltip-garbage behaviour), multi-platform detection and generic extraction
+(Zoom / Teams / Webex / generic), a short-text guard against aggregator
+containers, and performance at high saturation (200k matches, 60-participant
+scans). Run it after any change to `core.js`. Current: 35 checks / 0 failures.
 
 ---
 
@@ -171,14 +179,16 @@ Run it after any change to `core.js`. Current: 27 checks / 0 failures.
 
 ```
 meet attendance/
-├── manifest.json          # Chrome extension config (Manifest V3)
+├── manifest.json          # Chrome extension config (Manifest V3) + supported hosts
 ├── default-students.js    # Default roster (edit this)
-├── core.js                # Shared matching/extraction logic (also used by tests)
-├── content.js             # Injects into meet.google.com — scans participants, shows panel
+├── core.js                # Shared matching/extraction logic + platform registry (also used by tests)
+├── content.js             # Injects into the meeting page — scans participants, shows panel
 ├── popup.html             # Toolbar popup UI
 ├── popup.js               # Popup logic for editing/saving the roster
 ├── install.ps1            # One-click Windows installer (downloads all files into a folder)
 ├── tests/run.js           # Automated deep test suite (node tests/run.js)
+├── USAGE.md               # Step-by-step how-to-use guide
+├── CHANGELOG.md           # Version history / changelog
 └── README.md              # This file
 ```
 

@@ -409,6 +409,98 @@ test('collectParticipantNames is fast with a large panel', () => {
 });
 
 // ============================================================
+console.log('\n8. Multi-platform support (Zoom / Teams / Webex / generic)');
+
+// --- tiny selector-keyed DOM mock ---
+function pNode(text, attrs) {
+  return {
+    textContent: text || '',
+    getAttribute: (a) => (attrs && attrs[a] !== undefined ? attrs[a] : null),
+    querySelector: () => null,
+    querySelectorAll: () => [],
+  };
+}
+function selDoc(map) {
+  return {
+    body: { children: [] },
+    querySelectorAll: (sel) => map[sel] || [],
+    createTreeWalker: () => ({ nextNode: () => null }),
+  };
+}
+
+test('detectPlatform identifies every supported host', () => {
+  assert.strictEqual(core.detectPlatform({ hostname: 'meet.google.com' }), 'meet');
+  assert.strictEqual(core.detectPlatform({ hostname: 'us05web.zoom.us' }), 'zoom');
+  assert.strictEqual(core.detectPlatform({ hostname: 'zoom.com' }), 'zoom');
+  assert.strictEqual(core.detectPlatform({ hostname: 'teams.microsoft.com' }), 'teams');
+  assert.strictEqual(core.detectPlatform({ hostname: 'teams.live.com' }), 'teams');
+  assert.strictEqual(core.detectPlatform({ hostname: 'acme.webex.com' }), 'webex');
+  assert.strictEqual(core.detectPlatform({ hostname: 'whereby.com' }), 'whereby');
+  assert.strictEqual(core.detectPlatform({ hostname: 'example.com' }), 'generic');
+});
+
+test('every platform exposes tile + row selectors', () => {
+  ['meet', 'zoom', 'teams', 'webex', 'whereby', 'generic'].forEach((id) => {
+    const p = core.PLATFORMS[id];
+    assert.ok(p, id + ' must exist');
+    assert.ok(p.tileSelector, id + ' needs tileSelector');
+    assert.ok(p.rowSelector, id + ' needs rowSelector');
+  });
+});
+
+test('resolvePlatform defaults to meet and maps ids', () => {
+  assert.strictEqual(core.resolvePlatform(undefined).id, 'meet');
+  assert.strictEqual(core.resolvePlatform('zoom').id, 'zoom');
+  const custom = { id: 'custom', tileSelector: '.x', rowSelector: '.y' };
+  assert.strictEqual(core.resolvePlatform(custom), custom);
+});
+
+test('generic platform extracts roster rows via configured selectors', () => {
+  const plat = { id: 'test', tileSelector: '.tile', rowSelector: '.row', ariaPass: false };
+  const rows = [pNode('TANISHK BHATT'), pNode('SHAURYA SINGH'), pNode('You')];
+  const doc = selDoc({ '.tile': [], '.row': rows });
+  const found = core.collectParticipantNames(doc, ROSTER, plat);
+  assert.ok(found.has('TANISHK BHATT'));
+  assert.ok(found.has('SHAURYA SINGH'));
+  assert.ok(!found.has('You'), 'self must be excluded');
+});
+
+test('generic platform extracts participant tiles via configured selectors', () => {
+  const plat = { id: 'test', tileSelector: '.tile', rowSelector: '.row', ariaPass: false };
+  const tiles = [pNode('KUNAL BHATT'), pNode('JATIN JOSHI')];
+  const doc = selDoc({ '.tile': tiles, '.row': [] });
+  const found = core.collectParticipantNames(doc, ROSTER, plat);
+  assert.ok(found.has('KUNAL BHATT'));
+  assert.ok(found.has('JATIN JOSHI'));
+});
+
+test('non-Meet aria-label sweep finds names but filters action text', () => {
+  const plat = { id: 'test', tileSelector: '.tile', rowSelector: '.row', ariaPass: true };
+  const labels = [pNode('', { 'aria-label': 'ARADHYA PANDEY' }), pNode('', { 'aria-label': 'Reframe' }), pNode('', { 'aria-label': 'Mute' })];
+  const doc = selDoc({ '.tile': [], '.row': [], '[aria-label], [data-tooltip], [title]': labels });
+  const found = core.collectParticipantNames(doc, ROSTER, plat);
+  assert.ok(found.has('ARADHYA PANDEY'));
+  assert.ok(!found.has('Reframe'), 'action text must be filtered');
+  assert.ok(!found.has('Mute'), 'action text must be filtered');
+});
+
+test('zoom platform config extracts real tiles through its selectors', () => {
+  const p = core.PLATFORMS.zoom;
+  const tiles = [pNode('NIMISHA MEENA'), pNode('DIKSHITA SHARMA')];
+  const doc = selDoc({ [p.tileSelector]: tiles, [p.rowSelector]: [] });
+  const found = core.collectParticipantNames(doc, ROSTER, 'zoom');
+  assert.ok(found.has('NIMISHA MEENA'));
+  assert.ok(found.has('DIKSHITA SHARMA'));
+});
+
+test('meet default behaviour is unchanged when no platform is passed', () => {
+  const doc = makeDoc({ tiles: ['TANISHK BHATT'], leaves: [], rows: ['SHAURYA SAUN'] });
+  const found = core.collectParticipantNames(doc, ROSTER);
+  assert.ok(found.has('TANISHK BHATT'));
+  assert.ok(found.has('SHAURYA SAUN'));
+});
+
+// ============================================================
 console.log('\n----------------------------------------');
 console.log('Result: ' + pass + ' passed, ' + fail + ' failed');
 if (fail > 0) {

@@ -1,13 +1,31 @@
 {
   "manifest_version": 3,
-  "name": "Google Meet Attendance",
-  "version": "1.0.0",
-  "description": "Runs inside your Google Meet meeting, reads the participant list, and marks attendance against your student list.",
+  "name": "Meet Attendance",
+  "version": "1.1.0",
+  "description": "Runs inside your online class (Google Meet, Zoom, Teams, Webex), reads the participant list, and marks attendance against your student list.",
   "permissions": ["storage"],
-  "host_permissions": ["https://meet.google.com/*"],
+  "host_permissions": [
+    "https://meet.google.com/*",
+    "https://*.zoom.us/*",
+    "https://*.zoom.com/*",
+    "https://teams.microsoft.com/*",
+    "https://teams.live.com/*",
+    "https://*.webex.com/*",
+    "https://whereby.com/*",
+    "https://*.whereby.com/*"
+  ],
   "content_scripts": [
     {
-      "matches": ["https://meet.google.com/*"],
+      "matches": [
+        "https://meet.google.com/*",
+        "https://*.zoom.us/*",
+        "https://*.zoom.com/*",
+        "https://teams.microsoft.com/*",
+        "https://teams.live.com/*",
+        "https://*.webex.com/*",
+        "https://whereby.com/*",
+        "https://*.whereby.com/*"
+      ],
       "js": ["default-students.js", "core.js", "content.js"],
       "run_at": "document_idle"
     }

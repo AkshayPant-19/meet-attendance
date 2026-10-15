@@ -14,6 +14,101 @@
 
   var NAME_SELECTORS = ['[data-self-name]', '.oIy2qc', '.n8xkHc', '.Z9qxz'];
 
+  // A little harmless generic label sweep (short aria-labels that are not
+  // action/tooltip text). Improves detection on platforms we can't special-case.
+  var GENERIC_SHORT_LABEL_MAX = 40;
+
+  /**
+   * Per-platform extraction configuration. `collectParticipantNames` reads
+   * participant tiles and roster rows using these selectors; the broad
+   * short-text exact scan runs on every platform, so an app we never
+   * special-cased still gets counted when its roster names appear as text.
+   *
+   * To support a new app, add an entry with its tile/row selectors and add the
+   * host to PLATFORM_HOSTS / manifest.json matches.
+   */
+  var PLATFORMS = {
+    meet: {
+      id: 'meet',
+      label: 'Google Meet',
+      tileSelector: '[data-participant-id]',
+      rowSelector: '[role="listitem"], [role="list"] > [data-participant-id]',
+      peopleWords: ['people', 'participant', 'attendee'],
+      ariaPass: false,
+    },
+    zoom: {
+      id: 'zoom',
+      label: 'Zoom',
+      // Web SDK participant tiles and the in-meeting video/avatar wrappers.
+      tileSelector: '[data-participant-id], .participant-item, [class*="video-avatar"], [class*="participant-tile"]',
+      rowSelector: '[role="listitem"], .participants-list .participant-item, .participant-item, [class*="participants-list"] [class*="participant"]',
+      peopleWords: ['participant', 'people', 'attendee'],
+      ariaPass: true,
+    },
+    teams: {
+      id: 'teams',
+      label: 'Microsoft Teams',
+      tileSelector: '[data-tid="participant"], [data-tid="roster-participant"], [data-tid="video-tile"]',
+      rowSelector: '[role="listitem"], [data-tid="roster-participant"], [data-tid="participant-item"], [data-tid="roster"] [role="listitem"]',
+      peopleWords: ['participant', 'people', 'roster', 'attendee'],
+      ariaPass: true,
+    },
+    webex: {
+      id: 'webex',
+      label: 'Cisco Webex',
+      tileSelector: '[data-participant-id], [class*="participant"] [class*="name"]',
+      rowSelector: '[role="listitem"], [class*="participants"] [class*="item"], [class*="roster"] [class*="item"]',
+      peopleWords: ['participant', 'people', 'attendee'],
+      ariaPass: true,
+    },
+    whereby: {
+      id: 'whereby',
+      label: 'Whereby',
+      tileSelector: '[data-participant-id], [class*="videoTile"], [class*="participant"]',
+      rowSelector: '[role="listitem"], [class*="participant"]',
+      peopleWords: ['participant', 'people'],
+      ariaPass: true,
+    },
+    generic: {
+      id: 'generic',
+      label: 'Meeting',
+      tileSelector: '[data-participant-id]',
+      rowSelector: '[role="listitem"], [role="option"], [role="list"] > [data-participant-id]',
+      peopleWords: ['participant', 'people', 'attendee', 'roster'],
+      ariaPass: true,
+    },
+  };
+
+  // Host suffix -> platform id. Order matters only for overlap; suffixes are
+  // matched with endsWith-style checks.
+  var PLATFORM_HOSTS = [
+    { suffix: 'meet.google.com', id: 'meet' },
+    { suffix: 'zoom.us', id: 'zoom' },
+    { suffix: 'zoom.com', id: 'zoom' },
+    { suffix: 'teams.microsoft.com', id: 'teams' },
+    { suffix: 'teams.live.com', id: 'teams' },
+    { suffix: 'webex.com', id: 'webex' },
+    { suffix: 'whereby.com', id: 'whereby' },
+  ];
+
+  function detectPlatform(loc) {
+    var host = String((loc && loc.hostname) || (typeof location !== 'undefined' ? location.hostname : '') || '').toLowerCase();
+    for (var i = 0; i < PLATFORM_HOSTS.length; i++) {
+      var s = PLATFORM_HOSTS[i].suffix;
+      if (host === s || host.slice(-(s.length + 1)) === '.' + s) return PLATFORM_HOSTS[i].id;
+    }
+    return 'generic';
+  }
+
+  function resolvePlatform(platform) {
+    if (!platform) return PLATFORMS.meet;
+    if (typeof platform === 'object') {
+      if (platform.id && PLATFORMS[platform.id]) return PLATFORMS[platform.id];
+      return platform;
+    }
+    return PLATFORMS[platform] || PLATFORMS.generic;
+  }
+
   // Tokens that carry no identity (pronouns, status words). Stripped before matching.
   var PRONOUNS = new Set([
     'you', 'me', 'he', 'him', 'she', 'her', 'they', 'them', 'it',
@@ -115,7 +210,8 @@
    * when it appears intact inside a tile's text (e.g. "Pin Akshay Pant to your
    * main screen"). Returns a Set of raw participant strings.
    */
-  function collectParticipantNames(doc, students) {
+  function collectParticipantNames(doc, students, platform) {
+    var plate = resolvePlatform(platform);
     var found = new Set();
 
     // Multi-word roster names, pre-normalized once for containment matching.
@@ -135,7 +231,7 @@
       }
     }
 
-    doc.querySelectorAll('[data-participant-id]').forEach(function (tile) {
+    doc.querySelectorAll(plate.tileSelector).forEach(function (tile) {
       var raws = [];
 
       for (var s = 0; s < NAME_SELECTORS.length; s++) {
@@ -170,14 +266,32 @@
     // People-panel drawer rows. Each row element is exactly ONE person, so a
     // roster name found inside its text (e.g. "Tanuja Tripathi(You)" or a row
     // with a trailing mic-state label) is a real participant — never a list of
-    // several names.
-    var drawRows = doc.querySelectorAll('[role="listitem"], [role="list"] > [data-participant-id]');
+    // several names. Row selectors differ per platform; the broad scan below
+    // still catches platforms whose rows use different markup.
+    var drawRows = doc.querySelectorAll(plate.rowSelector);
     for (var d = 0; d < drawRows.length; d++) {
       var row = drawRows[d];
       var rowRaw = cleanName(row.getAttribute('aria-label') || row.textContent);
       if (rowRaw && rowRaw.toLowerCase() !== 'you') {
         if (!ACTION_RX.test(rowRaw) && rowRaw.length <= 40) found.add(rowRaw);
         addRosterMatchesWithin(rowRaw);
+      }
+    }
+
+    // Generic short aria-label sweep for non-Meet platforms: participant names
+    // are often only in tile/button labels. Action/tooltip text is filtered out
+    // and only short labels are considered.
+    if (plate.ariaPass) {
+      var labelEls = doc.querySelectorAll('[aria-label], [data-tooltip], [title]');
+      for (var l = 0; l < labelEls.length; l++) {
+        var el = labelEls[l];
+        var raw = cleanName(
+          el.getAttribute('aria-label') || el.getAttribute('data-tooltip') || el.getAttribute('title') || '',
+        );
+        if (!raw || raw.length > GENERIC_SHORT_LABEL_MAX) continue;
+        if (raw.toLowerCase() === 'you' || ACTION_RX.test(raw)) continue;
+        found.add(raw);
+        addRosterMatchesWithin(raw);
       }
     }
 
@@ -230,6 +344,10 @@
     NAME_SELECTORS: NAME_SELECTORS,
     PRONOUNS: PRONOUNS,
     ACTION_RX: ACTION_RX,
+    PLATFORMS: PLATFORMS,
+    PLATFORM_HOSTS: PLATFORM_HOSTS,
+    detectPlatform: detectPlatform,
+    resolvePlatform: resolvePlatform,
     cleanName: cleanName,
     normalizeName: normalizeName,
     cleanTokens: cleanTokens,
