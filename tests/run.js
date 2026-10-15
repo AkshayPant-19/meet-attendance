@@ -501,6 +501,57 @@ test('meet default behaviour is unchanged when no platform is passed', () => {
 });
 
 // ============================================================
+console.log('\n9. Sync payload (POST /api/sync body)');
+test('buildSyncPayload marks present/absent and includes every student', () => {
+  const students = ['ALICE', 'BOB', 'CAROL'];
+  const present = new Set(['ALICE', 'CAROL']);
+  const records = { ALICE: { join: 1000, leave: 5000 }, BOB: {}, CAROL: { join: 2000 } };
+  const p = core.buildSyncPayload({ students, present, records, title: 'T', platform: 'meet', meetingCode: 'abc' });
+  assert.deepStrictEqual(p.students, students);
+  assert.strictEqual(p.records.ALICE.status, 'present');
+  assert.strictEqual(p.records.BOB.status, 'absent');
+  assert.strictEqual(p.records.CAROL.status, 'present');
+  assert.strictEqual(p.records.ALICE.join, 1000);
+  assert.strictEqual(p.records.BOB.join, null);
+  assert.strictEqual(p.meetingCode, 'abc');
+  assert.strictEqual(p.platform, 'meet');
+});
+
+test('buildSyncPayload derives startedAt/endedAt from joins/leaves', () => {
+  const p = core.buildSyncPayload({
+    students: ['A', 'B'],
+    present: ['A', 'B'],
+    records: { A: { join: 100, leave: 300 }, B: { join: 50, leave: 900 } },
+  });
+  assert.strictEqual(p.startedAt, 50);
+  assert.strictEqual(p.endedAt, 900);
+});
+
+test('buildSyncPayload accepts an array for present', () => {
+  const p = core.buildSyncPayload({ students: ['A', 'B'], present: ['A'], records: {} });
+  assert.strictEqual(p.records.A.status, 'present');
+  assert.strictEqual(p.records.B.status, 'absent');
+});
+
+test('buildSyncPayload omits time fields and defaults title when empty', () => {
+  const p = core.buildSyncPayload({ students: ['A'], present: [], records: {} });
+  assert.ok(!('startedAt' in p));
+  assert.ok(!('endedAt' in p));
+  assert.strictEqual(p.title, 'Untitled session');
+});
+
+test('buildSyncPayload is JSON-safe (no Set leaks) and round-trips', () => {
+  const p = core.buildSyncPayload({
+    students: ['A', 'B'],
+    present: new Set(['A']),
+    records: { A: { join: 1, leave: 2 } },
+  });
+  const clone = JSON.parse(JSON.stringify(p));
+  assert.deepStrictEqual(clone.students, ['A', 'B']);
+  assert.strictEqual(clone.records.A.status, 'present');
+});
+
+// ============================================================
 console.log('\n----------------------------------------');
 console.log('Result: ' + pass + ' passed, ' + fail + ' failed');
 if (fail > 0) {

@@ -340,6 +340,49 @@
     return { present: presentList, absent: absent, unknown: unknown };
   }
 
+  /**
+   * Build the JSON body posted to POST /api/sync (matches lib/types.ts
+   * SyncPayload on the website). Pure + side-effect free so it is unit-tested.
+   * `present` may be an Array or a Set; `records[name]` uses epoch-ms
+   * { join, leave }. Every roster student becomes a record; those not in
+   * `present` are marked absent. startedAt/endedAt are derived from the
+   * earliest join and latest leave.
+   */
+  function buildSyncPayload(opts) {
+    opts = opts || {};
+    var students = opts.students || [];
+    var presentSet = opts.present instanceof Set ? opts.present : new Set(opts.present || []);
+    var records = opts.records || {};
+    var recs = {};
+    var startedAt = null;
+    var endedAt = null;
+
+    for (var i = 0; i < students.length; i++) {
+      var s = students[i];
+      var r = records[s] || {};
+      var join = typeof r.join === 'number' && isFinite(r.join) ? r.join : null;
+      var leave = typeof r.leave === 'number' && isFinite(r.leave) ? r.leave : null;
+      if (join !== null && (startedAt === null || join < startedAt)) startedAt = join;
+      if (leave !== null && (endedAt === null || leave > endedAt)) endedAt = leave;
+      recs[s] = {
+        join: join,
+        leave: leave,
+        status: presentSet.has(s) ? 'present' : 'absent',
+      };
+    }
+
+    var payload = {
+      title: opts.title || 'Untitled session',
+      platform: opts.platform || null,
+      students: students.slice(),
+      records: recs,
+    };
+    if (opts.meetingCode) payload.meetingCode = opts.meetingCode;
+    if (startedAt !== null) payload.startedAt = startedAt;
+    if (endedAt !== null) payload.endedAt = endedAt;
+    return payload;
+  }
+
   return {
     NAME_SELECTORS: NAME_SELECTORS,
     PRONOUNS: PRONOUNS,
@@ -356,5 +399,6 @@
     createIndex: createIndex,
     collectParticipantNames: collectParticipantNames,
     categorize: categorize,
+    buildSyncPayload: buildSyncPayload,
   };
 });

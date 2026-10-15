@@ -28,6 +28,8 @@ A Chrome extension that runs **inside** your online class (Google Meet, Zoom, Mi
 irm https://raw.githubusercontent.com/AkshayPant-19/meet-attendance/main/install.ps1 | iex
 ```
 
+**Option C — Web installer.** Open your dashboard's **Install** page (`/install`), click **Download extension (.zip)**, unzip it, then load it in Chrome. That page also serves a one-line PowerShell installer (`irm <site>/install.ps1 | iex`).
+
 **Then, in Chrome:**
 
 1. Open `chrome://extensions`.
@@ -50,6 +52,7 @@ irm https://raw.githubusercontent.com/AkshayPant-19/meet-attendance/main/install
 - **Timestamps** — records each student's **join** and **leave** time, plus an attendance log every **5 minutes** (with who left/joined and whether attendance stayed consistent), shown in the panel and included in the CSV export.
 - **CSV export** — download `meeting_attendance.csv` at the end of class.
 - **Session reset** — start a clean attendance record for the next meeting.
+- **Sync to the web dashboard (optional)** — set a server URL + API token in the popup, then press **Sync to server** to push the session to your account.
 
 ## Table of Contents
 
@@ -95,6 +98,7 @@ irm https://raw.githubusercontent.com/AkshayPant-19/meet-attendance/main/install
 | Start monitoring | Open the People panel and begin scanning participants continuously |
 | Stop | Pause scanning |
 | Export CSV | Download `meeting_attendance.csv` |
+| Sync to server | Send the session to your web dashboard (needs a server URL + API token) |
 | Reset session | Clear attendance + timestamps for a new meeting |
 | Debug | Copy a diagnostic report to the clipboard / console |
 
@@ -220,9 +224,13 @@ Click **Reset session** before the next meeting to clear the previous record (ti
 
 ## Privacy
 
-- Everything runs locally in your browser.
-- The roster and attendance live in `chrome.storage.local` — nothing is uploaded anywhere.
-- The extension only reads the Google Meet page; it sends no network requests.
+- Everything runs locally in your browser by default.
+- The roster and attendance live in `chrome.storage.local`. They are only ever
+  **uploaded if you opt in** by setting a server URL + API token and pressing
+  **Sync to server** — nothing is sent otherwise.
+- The extension reads the meeting page's participant list; with sync enabled it
+  sends only the attendance data (names, join/leave times) to **your own**
+  dashboard.
 
 ---
 

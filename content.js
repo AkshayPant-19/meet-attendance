@@ -5,6 +5,9 @@
   const LOG_KEY = 'meet_attendance_log';
   const MEETING_KEY = 'meet_attendance_meeting';
   const THEME_KEY = 'meet_attendance_theme';
+  const SYNC_URL_KEY = 'meet_attendance_sync_url';
+  const SYNC_TOKEN_KEY = 'meet_attendance_sync_token';
+  const SYNC_COUNT_KEY = 'meet_attendance_sync_count';
 
   if (window.__meetAttendanceLoaded) return;
   window.__meetAttendanceLoaded = true;
@@ -613,6 +616,94 @@
     URL.revokeObjectURL(url);
   }
 
+  // ---------- sync to the web dashboard ----------
+  function buildPayload() {
+    if (!C || !C.buildSyncPayload) return null;
+    return C.buildSyncPayload({
+      students: students,
+      present: present,
+      records: records,
+      title: document.title || (PLATFORM.label + ' session'),
+      platform: PLATFORM_ID,
+      meetingCode: meetingCode(),
+    });
+  }
+
+  async function getSyncSettings() {
+    const data = await chromeGet([SYNC_URL_KEY, SYNC_TOKEN_KEY]);
+    return {
+      url: String(data[SYNC_URL_KEY] || '').trim().replace(/\/+$/, ''),
+      token: String(data[SYNC_TOKEN_KEY] || '').trim(),
+    };
+  }
+
+  async function getSyncCount() {
+    const data = await chromeGet(SYNC_COUNT_KEY);
+    return data[SYNC_COUNT_KEY] || { synced: 0, lastAt: null, lastSessionId: null };
+  }
+
+  function setStatus(msg) {
+    if (els.status) els.status.textContent = msg;
+  }
+
+  async function updateSyncHint() {
+    if (!els.syncHint) return;
+    const { url, token } = await getSyncSettings();
+    if (!url || !token) {
+      els.syncHint.textContent = 'Not connected — set the server URL + token in the extension popup.';
+      return;
+    }
+    const c = await getSyncCount();
+    els.syncHint.textContent = 'Connected to ' + url + (c.synced ? ' · ' + c.synced + ' synced' : '');
+  }
+
+  async function syncSession() {
+    const { url, token } = await getSyncSettings();
+    if (!url || !token) {
+      setStatus('Set the server URL and API token in the extension popup, then try again.');
+      return;
+    }
+    const payload = buildPayload();
+    if (!payload || !payload.students.length) {
+      setStatus('Nothing to sync — add a student list first.');
+      return;
+    }
+
+    if (els.syncBtn) els.syncBtn.disabled = true;
+    setStatus('Syncing ' + payload.students.length + ' students…');
+    try {
+      const res = await fetch(url + '/api/sync', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer ' + token,
+        },
+        body: JSON.stringify(payload),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (res.ok) {
+        const c = await getSyncCount();
+        const count = (c.synced || 0) + 1;
+        try {
+          chrome.storage.local.set({
+            [SYNC_COUNT_KEY]: { synced: count, lastAt: Date.now(), lastSessionId: body.sessionId || null },
+          });
+        } catch (e) {}
+        setStatus(
+          'Synced ' + payload.students.length + ' students' +
+            (body.sessionId ? ' (session ' + String(body.sessionId).slice(0, 8) + ')' : '') + '.',
+        );
+        updateSyncHint();
+      } else {
+        setStatus('Sync failed (' + res.status + '): ' + (body.error || 'unknown error'));
+      }
+    } catch (e) {
+      setStatus('Sync failed: ' + (e && e.message ? e.message : e) + ' — check the server URL.');
+    } finally {
+      if (els.syncBtn) els.syncBtn.disabled = false;
+    }
+  }
+
   // ---------- UI ----------
   function setList(container, items, kind) {
     container.textContent = '';
@@ -874,6 +965,7 @@
         #meet-attendance-widget .ma-row button.ma-danger { background: var(--ma-danger); border-color: var(--ma-danger); color: #fff; }
         #meet-attendance-widget .ma-row button.ma-danger:hover { background: var(--ma-danger-hover); border-color: var(--ma-danger-hover); }
         #meet-attendance-widget .ma-status { margin-top: 12px; font-size: 12px; color: var(--ma-muted); }
+        #meet-attendance-widget .ma-sync-hint { margin-top: 8px; font-size: 11px; color: var(--ma-muted); word-break: break-all; }
       </style>
       <div class="ma-header" id="ma-header">
         <span class="ma-title"><span class="ma-dot"></span><span id="ma-app-title">Meet Attendance</span></span>
@@ -910,6 +1002,10 @@
           <button id="ma-export">Export CSV</button>
           <button id="ma-reset">Reset session</button>
         </div>
+        <div class="ma-row">
+          <button class="ma-primary" id="ma-sync">Sync to server</button>
+        </div>
+        <div class="ma-sync-hint" id="ma-sync-hint"></div>
         <div class="ma-row">
           <button id="ma-defaults">Use default list</button>
           <button id="ma-debug">Debug</button>
@@ -966,8 +1062,11 @@
     els.resetBtn.addEventListener('click', resetSession);
     els.defaultsBtn = host.querySelector('#ma-defaults');
     els.debugBtn = host.querySelector('#ma-debug');
+    els.syncBtn = host.querySelector('#ma-sync');
+    els.syncHint = host.querySelector('#ma-sync-hint');
     els.defaultsBtn.addEventListener('click', useDefaultList);
     els.debugBtn.addEventListener('click', copyDebugReport);
+    els.syncBtn.addEventListener('click', syncSession);
 
     let open = true;
     const toggle = () => {
@@ -988,6 +1087,7 @@
         if (!visible) {
           if (monitoring) scan();
           render();
+          updateSyncHint();
         }
       }
     }, true);
@@ -1036,6 +1136,7 @@
     await Promise.all([loadStudents(), loadPresent(), loadRecords(), loadLog()]);
     els.studentsBox.value = activeStudentsText();
     render();
+    updateSyncHint();
     console.log('[Meet Attendance] widget built, press Ctrl+M to show it');
   }
 

@@ -3,6 +3,31 @@
 All notable changes to **Google Meet Attendance** are documented here.
 Format based on [Keep a Changelog](https://keepachangelog.com/); versioning follows [SemVer](https://semver.org/).
 
+## [1.2.0] — 2026-10-15
+
+Sync sessions to the web dashboard.
+
+### Added
+
+- **Sync to server** — a button in the in-meeting panel that POSTs the current
+  session (roster, present/absent, join/leave times) to your dashboard's
+  `POST /api/sync` endpoint using a bearer API token.
+- **Sync settings in the popup** — paste a **Server URL** and **API token**, saved
+  to `chrome.storage.local`; the panel shows a **Connected** hint.
+- **`buildSyncPayload()`** in `core.js` — pure, unit-tested builder for the sync
+  request body (matches the website's `SyncPayload` type; derives
+  `startedAt`/`endedAt` from join/leave times).
+- **Tests** — added a sync-payload suite. Now **40 checks / 0 failures**.
+
+### Changed
+
+- Manifest description now mentions dashboard sync.
+
+### Notes
+
+- Sync is **opt-in**: nothing is uploaded until a server URL + token are set and
+  you press **Sync to server**.
+
 ## [1.1.0] — 2026-10-15
 
 Cross-app support, a theme switch, and a leaner panel.

@@ -117,6 +117,25 @@ Click **Start monitoring** in the panel. The extension will:
 
 ---
 
+## 9. Sync to the web dashboard (optional)
+
+Instead of (or as well as) exporting CSV, you can push the session to your own
+dashboard.
+
+1. In the dashboard, open the **Sync API** page and click **Create token**. Copy
+   the `ma_…` token (shown once).
+2. Click the extension's toolbar icon (popup). Under **Server sync**, paste the
+   **Server URL** (e.g. `https://your-app.vercel.app`) and the **API token**,
+   then click **Save settings**.
+3. In the meeting, press **Ctrl+M**, then click **Sync to server**. The panel
+   shows the result (and the new session appears under **Sessions** in the
+   dashboard).
+
+> The popup shows a **Connected** hint once the URL + token are set. Sync only
+> sends your roster, join/leave times and status — to your own server.
+
+---
+
 ## Controls
 
 | Control | Action |
@@ -127,6 +146,7 @@ Click **Start monitoring** in the panel. The extension will:
 | Start monitoring | Verify the Participants/People panel is open and begin scanning |
 | Stop | Pause scanning and record leave times |
 | Export CSV | Download `meeting_attendance.csv` |
+| Sync to server | Push the session to your dashboard (needs server URL + token) |
 | Reset session | Clear attendance + timestamps for a new meeting |
 | Debug | Copy a diagnostic report to the clipboard / console |
 
